@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mishav Trading Journal</title>
+  
+  <!-- React & ReactDOM (Lightweight UMD builds) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <!-- FIX: Corrected typo in the react-dom script URL from unpkg-com to unpkg.com -->
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel for in-browser JSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bgMain: '#080A0D',
+            bgPanel: '#0D1117',
+            bgBorder: '#11161D',
+            textMain: '#F5F7FA',
+            textMuted: '#A7AFBA',
+            textDark: '#6F7885',
+            profit: '#00FFB2',
+            loss: '#FF4D67',
+            accent: '#00E5FF'
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #080A0D; color: #F5F7FA; margin: 0; overflow: hidden; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #080A0D; }
+    ::-webkit-scrollbar-thumb { background: #11161D; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #6F7885; }
+    .glass-panel { background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(4px); }
+    /* Keep touch controls responsive without changing the visual design. */
+    button, label { touch-action: manipulation; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // ==========================================
+    // 1. SAMPLE DATA & UTILS
+    // ==========================================
+    const SAMPLE_TRADES = [
+      { id: '1', date: '2026-08-01', time: '09:30', pair: 'XAUUSD', direction: 'LONG', session: 'New York', setup: 'Liquidity Sweep', result: 'WIN', pnl: 250, entry: 2400.50, exit: 2405.50, sl: 2395.00, tp: 2410.00, mistakes: [], notes: 'Followed plan perfectly.' },
+      { id: '2', date: '2026-08-02', time: '14:15', pair: 'EURUSD', direction: 'SHORT', session: 'London', setup: 'Break of Structure', result: 'LOSS', pnl: -120, entry: 1.0950, exit: 1.0965, sl: 1.0965, tp: 1.0900, mistakes: ['FOMO', 'Early Entry'], notes: 'Entered before 15m candle close.' },
+      { id: '3', date: '2026-08-03', time: '08:00', pair: 'GBPUSD', direction: 'LONG', session: 'London', setup: 'Fair Value Gap', result: 'WIN', pnl: 300, entry: 1.2700, exit: 1.2750, sl: 1.2680, tp: 1.2750, mistakes: [], notes: 'Clean bounce off 1H FVG.' },
+      { id: '4', date: '2026-08-04', time: '10:30', pair: 'XAUUSD', direction: 'SHORT', session: 'New York', setup: 'Liquidity Sweep', result: 'LOSS', pnl: -150, entry: 2415.00, exit: 2418.00, sl: 2418.00, tp: 2405.00, mistakes: ['Moved SL'], notes: 'Widened stop loss, taking larger hit than planned.' },
+      { id: '5', date: '2026-08-04', time: '15:00', pair: 'USDJPY', direction: 'LONG', session: 'New York', setup: 'Continuation', result: 'WIN', pnl: 180, entry: 150.20, exit: 150.60, sl: 149.90, tp: 150.80, mistakes: [], notes: 'Re-entry on pullback.' },
+      { id: '6', date: '2026-08-05', time: '02:00', pair: 'USDJPY', direction: 'SHORT', session: 'Asian', setup: 'Reversal', result: 'BREAKEVEN', pnl: 0, entry: 151.00, exit: 151.00, sl: 151.50, tp: 150.00, mistakes: ['Moved TP'], notes: 'Closed at BE as momentum died.' },
+      { id: '7', date: '2026-08-06', time: '09:00', pair: 'EURUSD', direction: 'LONG', session: 'London', setup: 'Break of Structure', result: 'WIN', pnl: 400, entry: 1.0880, exit: 1.0930, sl: 1.0860, tp: 1.0950, mistakes: [], notes: 'Excellent trend continuation.' },
+      { id: '8', date: '2026-08-07', time: '11:00', pair: 'XAUUSD', direction: 'SHORT', session: 'New York', setup: 'Liquidity Sweep', result: 'LOSS', pnl: -100, entry: 2420.00, exit: 2422.50, sl: 2422.50, tp: 2410.00, mistakes: ['Revenge Trading'], notes: 'Tilted after missing earlier move.' },
+      { id: '9', date: '2026-08-07', time: '11:30', pair: 'XAUUSD', direction: 'SHORT', session: 'New York', setup: 'Fair Value Gap', result: 'LOSS', pnl: -100, entry: 2425.00, exit: 2427.50, sl: 2427.50, tp: 2415.00, mistakes: ['Overtrading', 'Emotional Entry'], notes: 'Took another trade immediately after loss.' },
+      { id: '10', date: '2026-08-10', time: '08:30', pair: 'GBPUSD', direction: 'LONG', session: 'London', setup: 'Breakout', result: 'WIN', pnl: 220, entry: 1.2800, exit: 1.2840, sl: 1.2780, tp: 1.2850, mistakes: [], notes: 'Solid pre-NY volume push.' }
+    ];
+
+    const MISTAKE_OPTS = ['FOMO', 'Revenge Trading', 'Overtrading', 'Early Entry', 'Late Entry', 'Moved SL', 'Moved TP', 'Oversized Risk', 'No Confirmation', 'Ignored Trading Plan', 'Chased Price', 'Emotional Entry'];
+    const SETUP_OPTS = ['Liquidity Sweep', 'Break of Structure', 'Fair Value Gap', 'Supply & Demand', 'Breakout', 'Reversal', 'Continuation'];
+    const PAIR_OPTS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'US30', 'NAS100'];
+
+    const formatMoney = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+    const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    // ==========================================
+    // 2. ICONS
+    // ==========================================
+    const Icons = {
+      Dashboard: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>,
+      Book: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+      List: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+      Activity: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+      Calendar: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+      Target: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+      Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+      Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+      Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    };
+
+    // ==========================================
+    // 3. CORE COMPONENTS
+    // ==========================================
+    const StatCard = ({ label, value, subtext, subtextClass = 'text-textDark', type = 'neutral' }) => {
+      const colorClass = type === 'profit' ? 'text-profit' : type === 'loss' ? 'text-loss' : type === 'accent' ? 'text-accent' : 'text-textMain';
+      return (
+        <div className="bg-bgPanel border border-bgBorder rounded-md p-4 shadow-sm flex flex-col">
+          <span className="text-textMuted text-xs font-medium uppercase tracking-wider mb-1">{label}</span>
+          <span className={`text-2xl font-mono font-bold ${colorClass}`}>{value}</span>
+          {subtext && <span className={`${subtextClass} text-xs mt-1`}>{subtext}</span>}
+        </div>
+      );
+    };
+
+    const AccountProgress = ({ accountReturn, currentProfit }) => {
+      const [target, setTarget] = useState(() => {
+        const savedTarget = localStorage.getItem('mishav_account_progress_target');
+        try {
+          const parsed = savedTarget ? JSON.parse(savedTarget) : null;
+          return parsed && ['Percentage', 'USD'].includes(parsed.type)
+            ? { type: parsed.type, value: parsed.value ?? '' }
+            : { type: 'Percentage', value: '' };
+        } catch (err) {
+          return { type: 'Percentage', value: '' };
+        }
+      });
+
+      useEffect(() => {
+        localStorage.setItem('mishav_account_progress_target', JSON.stringify(target));
+      }, [target]);
+
+      const targetValue = parseFloat(target.value);
+      const hasTarget = Number.isFinite(targetValue) && targetValue > 0;
+      const progressSource = target.type === 'Percentage' ? accountReturn : currentProfit;
+      const actualProgress = hasTarget ? (progressSource / targetValue) * 100 : 0;
+      const visualProgress = Math.min(100, Math.abs(actualProgress));
+      const displayProgress = Math.abs(actualProgress).toFixed(0);
+      const colorClass = progressSource > 0 ? 'text-profit' : progressSource < 0 ? 'text-loss' : 'text-accent';
+      const returnLabel = `${accountReturn > 0 ? '+' : ''}${accountReturn.toFixed(2)}%`;
+      const targetLabel = hasTarget ? `${targetValue > 0 ? '+' : ''}${target.type === 'USD' ? `$${targetValue.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : `${targetValue}%`}` : 'Not set';
+      const radius = 56;
+      const circumference = 2 * Math.PI * radius;
+      const dashOffset = circumference * (1 - visualProgress / 100);
+
+      return (
+        <div className="bg-bgPanel border border-bgBorder rounded-md p-5">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-5">
+              <div className={`relative w-36 h-36 sm:w-40 sm:h-40 shrink-0 ${colorClass}`}>
+                <svg viewBox="0 0 128 128" className="w-full h-full -rotate-90" aria-label="Account progress ring">
+                  <circle cx="64" cy="64" r={radius} fill="none" stroke="#11161D" strokeWidth="7" />
+                  <circle cx="64" cy="64" r={radius} fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center rotate-0">
+                  <span className={`text-lg sm:text-xl font-mono font-bold ${colorClass}`}>{returnLabel}</span>
+                  <span className={`mt-1 text-[10px] font-bold tracking-wider ${colorClass}`}>{hasTarget ? `${displayProgress}% OF TARGET` : 'SET TARGET'}</span>
+                </div>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-textMain text-sm font-medium uppercase tracking-wider">Account Progress</h3>
+                <div className="mt-3 space-y-1 text-sm">
+                  <div className="flex gap-2"><span className="text-textMuted">Current Return:</span><span className={`font-mono font-bold ${colorClass}`}>{returnLabel}</span></div>
+                  <div className="flex gap-2"><span className="text-textMuted">Target:</span><span className="font-mono text-textMain">{targetLabel}</span></div>
+                  <div className="flex gap-2"><span className="text-textMuted">Target Type:</span><span className="text-textMain">{target.type}</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 w-full sm:w-56 shrink-0">
+              <div>
+                <label className="block text-xs text-textMuted mb-1">Target Type</label>
+                <select value={target.type} onChange={e => setTarget({ ...target, type: e.target.value })} className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none">
+                  <option>Percentage</option>
+                  <option>USD</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-textMuted mb-1">Target</label>
+                <input type="number" min="0.01" step="any" inputMode="decimal" value={target.value} onChange={e => setTarget({ ...target, value: e.target.value })} placeholder={target.type === 'USD' ? 'USD amount' : 'Percentage'} className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const CumulativeChart = ({ data }) => {
+      if (!data || data.length === 0) return <div className="h-full flex items-center justify-center text-textDark text-sm">No data available</div>;
+      
+      const width = 800; const height = 250;
+      const padding = { top: 20, bottom: 20, left: 10, right: 10 };
+      
+      const maxPnL = Math.max(...data.map(d => d.cumulativePnl), 0) * 1.1 || 100;
+      const minPnL = Math.min(...data.map(d => d.cumulativePnl), 0) * 1.1 || -100;
+      const rangeY = maxPnL - minPnL;
+      
+      const getX = (index) => padding.left + (index / Math.max(data.length - 1, 1)) * (width - padding.left - padding.right);
+      const getY = (val) => height - padding.bottom - ((val - minPnL) / rangeY) * (height - padding.top - padding.bottom);
+      const zeroY = getY(0);
+
+      const pathData = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.cumulativePnl)}`).join(' ');
+      const areaPath = `${pathData} L ${getX(data.length - 1)} ${zeroY} L ${getX(0)} ${zeroY} Z`;
+
+      const isOverallProfit = data[data.length-1].cumulativePnl >= 0;
+      const strokeColor = isOverallProfit ? '#00FFB2' : '#FF4D67';
+      const fillId = isOverallProfit ? 'profitFill' : 'lossFill';
+
+      return (
+        <div className="w-full h-full relative group">
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full preserve-3d" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="profitFill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#00FFB2" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#00FFB2" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="lossFill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#FF4D67" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#FF4D67" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <line x1={0} y1={zeroY} x2={width} y2={zeroY} stroke="#11161D" strokeWidth="1" strokeDasharray="4,4" />
+            <path d={areaPath} fill={`url(#${fillId})`} />
+            <path d={pathData} fill="none" stroke={strokeColor} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            {data.map((d, i) => (
+              <circle key={i} cx={getX(i)} cy={getY(d.cumulativePnl)} r="3" fill="#0D1117" stroke={strokeColor} strokeWidth="1.5" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            ))}
+          </svg>
+          <div className="flex justify-between mt-2 px-2 text-[10px] text-textDark font-mono uppercase">
+            <span>{formatDate(data[0].date)}</span>
+            <span>{formatDate(data[Math.floor(data.length/2)].date)}</span>
+            <span>{formatDate(data[data.length-1].date)}</span>
+          </div>
+        </div>
+      );
+    };
+
+    // ==========================================
+    // 4. MAIN VIEWS
+    // ==========================================
+    
+    // --- DASHBOARD ---
+    const DashboardView = ({ trades, startingBalance }) => {
+      const stats = useMemo(() => {
+        let net = 0, wins = 0, losses = 0, grossWin = 0, grossLoss = 0, maxDd = 0, peak = 0;
+        trades.forEach(t => {
+          net += t.pnl;
+          if (net > peak) peak = net;
+          if (peak - net > maxDd) maxDd = peak - net;
+          if (t.result === 'WIN') { wins++; grossWin += t.pnl; }
+          if (t.result === 'LOSS') { losses++; grossLoss += Math.abs(t.pnl); }
+        });
+        const winRate = trades.length ? ((wins / (wins + losses)) * 100).toFixed(1) : 0;
+        const pf = grossLoss > 0 ? (grossWin / grossLoss).toFixed(2) : grossWin > 0 ? '∞' : '0.00';
+        const exp = trades.length ? (net / trades.length).toFixed(2) : 0;
+        return { net, winRate, wins, losses, pf, maxDd, exp, count: trades.length };
+      }, [trades]);
+
+      const cumulativeData = useMemo(() => {
+        const sorted = [...trades].sort((a,b) => new Date(a.date) - new Date(b.date));
+        const daily = {};
+        sorted.forEach(t => { daily[t.date] = (daily[t.date] || 0) + t.pnl; });
+        let cum = 0;
+        return Object.entries(daily).map(([date, pnl]) => {
+          cum += pnl;
+          return { date, dailyPnl: pnl, cumulativePnl: cum };
+        });
+      }, [trades]);
+
+      const recent = [...trades].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+      
+      const currentBalance = startingBalance + stats.net;
+      const accountReturn = startingBalance > 0 ? ((currentBalance - startingBalance) / startingBalance) * 100 : 0;
+      const accountReturnLabel = `${accountReturn > 0 ? '+' : ''}${accountReturn.toFixed(2)}% Return`;
+      const accountReturnClass = accountReturn > 0 ? 'text-profit' : accountReturn < 0 ? 'text-loss' : 'text-textMuted';
+      const maxDdPct = startingBalance > 0 ? ((stats.maxDd / startingBalance) * 100).toFixed(2) : '0.00';
+      
+      // Calculate Edge Score safely without referencing R
+      const isPfGood = stats.pf === '∞' || parseFloat(stats.pf) > 1;
+      const edgeScore = (parseFloat(stats.winRate) * 0.8 + (isPfGood ? 20 : 0)).toFixed(0);
+
+      return (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Net P&L" value={formatMoney(stats.net)} type={stats.net >= 0 ? 'profit' : 'loss'} subtext={accountReturnLabel} subtextClass={accountReturnClass} />
+            <StatCard label="Win Rate" value={`${stats.winRate}%`} subtext={`${stats.wins}W / ${stats.losses}L`} />
+            <StatCard label="Profit Factor" value={stats.pf} type="accent" />
+            <StatCard label="Total Trades" value={stats.count} />
+            <StatCard label="Expectancy" value={formatMoney(stats.exp)} type={stats.exp >= 0 ? 'profit' : 'loss'} subtext="Per trade" />
+            <StatCard label="Max Drawdown" value={formatMoney(-stats.maxDd)} type="loss" subtext={`-${maxDdPct}% of Balance`} />
+          </div>
+
+          <AccountProgress accountReturn={accountReturn} currentProfit={stats.net} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col h-[350px]">
+              <div className="mb-4">
+                <h3 className="text-textMain text-sm font-medium uppercase tracking-wider">Daily Cumulative P&L</h3>
+                <p className="text-textDark text-xs mt-1">Running total over time</p>
+              </div>
+              <div className="flex-1 min-h-0 border-t border-b border-bgBorder relative pt-4">
+                <CumulativeChart data={cumulativeData} />
+              </div>
+            </div>
+            
+            <div className="bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col h-[350px]">
+              <h3 className="text-textMain text-sm font-medium uppercase tracking-wider mb-4">Edge Score</h3>
+              <div className="flex-1 flex flex-col justify-center items-center gap-6">
+                <div className="relative w-32 h-32 rounded-full border-4 border-bgBorder flex items-center justify-center">
+                  <div className="absolute inset-2 rounded-full border-4 border-accent opacity-20 border-t-accent opacity-100 animate-[spin_3s_linear_infinite]"></div>
+                  <span className="text-3xl font-bold font-mono text-textMain">{edgeScore}</span>
+                </div>
+                <div className="w-full text-xs text-textMuted space-y-2">
+                  <div className="flex justify-between"><span>Consistency</span><span className="text-profit">High</span></div>
+                  <div className="flex justify-between"><span>Risk Mgmt</span><span className="text-accent">Stable</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden">
+            <div className="p-4 border-b border-bgBorder">
+              <h3 className="text-textMain text-sm font-medium uppercase tracking-wider">Recent Trades</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-[#11161D] text-textMuted text-xs uppercase font-medium">
+                  <tr>
+                    <th className="px-4 py-3">Date</th><th className="px-4 py-3">Pair</th>
+                    <th className="px-4 py-3">Dir</th><th className="px-4 py-3">Setup</th>
+                    <th className="px-4 py-3 text-right">Entry</th><th className="px-4 py-3 text-right">P&L</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-bgBorder text-textMain">
+                  {recent.map(t => (
+                    <tr key={t.id} className="hover:bg-bgBorder transition-colors">
+                      <td className="px-4 py-3 text-textMuted font-mono">{formatDate(t.date)}</td>
+                      <td className="px-4 py-3 font-medium">{t.pair}</td>
+                      <td className={`px-4 py-3 text-xs font-bold ${t.direction==='LONG'?'text-accent':'text-loss'}`}>{t.direction}</td>
+                      <td className="px-4 py-3 text-textMuted">{t.setup}</td>
+                      <td className="px-4 py-3 text-right font-mono">{t.entry || '-'}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-bold ${t.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(t.pnl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- JOURNAL ---
+    const JournalView = ({ trades }) => {
+      const sorted = [...trades].sort((a,b) => new Date(b.date) - new Date(a.date));
+      return (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain mb-4">Trading Journal</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sorted.map(t => (
+              <div key={t.id} className={`bg-bgPanel border-l-4 border-y border-r border-y-bgBorder border-r-bgBorder rounded-r-md p-5 shadow-sm ${t.pnl >= 0 ? 'border-l-profit' : 'border-l-loss'}`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="flex gap-2 items-center">
+                      <span className="font-bold text-lg">{t.pair}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded bg-bgMain border border-bgBorder font-bold ${t.direction==='LONG'?'text-accent':'text-loss'}`}>{t.direction}</span>
+                    </div>
+                    <span className="text-xs text-textMuted font-mono">{formatDate(t.date)} • {t.time} • {t.session}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className={`font-mono text-xl font-bold ${t.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{t.pnl > 0 ? '+' : ''}{formatMoney(t.pnl)}</div>
+                    <div className="text-xs text-textDark font-mono mt-1">
+                      {t.entry ? `Entry: ${t.entry}` : ''}
+                      {t.exit ? ` | Exit: ${t.exit}` : ''}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-3 mt-4 text-sm text-textMuted">
+                  <div><strong className="text-textMain font-medium">Setup:</strong> {t.setup}</div>
+                  <div><strong className="text-textMain font-medium">Notes:</strong> {t.notes || 'No notes.'}</div>
+                  {t.mistakes?.length > 0 && (
+                    <div className="pt-2 flex flex-wrap gap-1.5">
+                      {t.mistakes.map(m => <span key={m} className="text-[10px] uppercase bg-[#2A1519] text-loss px-2 py-1 rounded border border-[#3A1C22]">{m}</span>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // --- TRADES & FORM ---
+    const TradesView = ({ trades, setTrades }) => {
+      const [showModal, setShowModal] = useState(false);
+      const [editingId, setEditingId] = useState(null);
+      
+      const defaultForm = { date: new Date().toISOString().split('T')[0], time: '12:00', pair: 'XAUUSD', direction: 'LONG', session: 'New York', setup: 'Breakout', pnl: 0, entry: '', exit: '', sl: '', tp: '', mistakes: [], notes: '' };
+      const [form, setForm] = useState(defaultForm);
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        const pnlNum = parseFloat(form.pnl) || 0;
+        const newTrade = { 
+          ...form, 
+          id: editingId || Date.now().toString(), 
+          pnl: pnlNum, 
+          entry: form.entry ? parseFloat(form.entry) : '',
+          exit: form.exit ? parseFloat(form.exit) : '',
+          sl: form.sl ? parseFloat(form.sl) : '',
+          tp: form.tp ? parseFloat(form.tp) : '',
+          result: pnlNum > 0 ? 'WIN' : pnlNum < 0 ? 'LOSS' : 'BREAKEVEN' 
+        };
+        if (editingId) setTrades(trades.map(t => t.id === editingId ? newTrade : t));
+        else setTrades([...trades, newTrade]);
+        setShowModal(false); setForm(defaultForm); setEditingId(null);
+      };
+
+      const handleDelete = (id) => { if(confirm('Delete trade?')) setTrades(trades.filter(t => t.id !== id)); };
+      const handleEdit = (t) => { setForm(t); setEditingId(t.id); setShowModal(true); };
+      
+      const toggleMistake = (m) => {
+        setForm(prev => ({ ...prev, mistakes: prev.mistakes.includes(m) ? prev.mistakes.filter(x => x !== m) : [...prev.mistakes, m] }));
+      };
+
+      return (
+        <div className="space-y-4 h-full flex flex-col">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">All Trades</h2>
+            <button onClick={() => { setForm(defaultForm); setEditingId(null); setShowModal(true); }} className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors">
+              <Icons.Plus /> Add Trade
+            </button>
+          </div>
+
+          <div className="flex-1 bg-bgPanel border border-bgBorder rounded-md overflow-hidden flex flex-col">
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-[#11161D] text-textMuted text-xs uppercase font-medium sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3">Date</th><th className="px-4 py-3">Pair</th><th className="px-4 py-3">Dir</th>
+                    <th className="px-4 py-3">Setup</th><th className="px-4 py-3 text-right">Entry</th><th className="px-4 py-3 text-right">P&L</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-bgBorder text-textMain">
+                  {[...trades].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => (
+                    <tr key={t.id} className="hover:bg-bgBorder transition-colors">
+                      <td className="px-4 py-3 font-mono">{formatDate(t.date)}</td>
+                      <td className="px-4 py-3">{t.pair}</td>
+                      <td className={`px-4 py-3 text-xs font-bold ${t.direction==='LONG'?'text-accent':'text-loss'}`}>{t.direction}</td>
+                      <td className="px-4 py-3">{t.setup}</td>
+                      <td className="px-4 py-3 text-right font-mono">{t.entry || '-'}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-bold ${t.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(t.pnl)}</td>
+                      <td className="px-4 py-3 flex justify-end gap-3 text-textMuted">
+                        <button onClick={() => handleEdit(t)} className="hover:text-accent">Edit</button>
+                        <button onClick={() => handleDelete(t.id)} className="hover:text-loss"><Icons.Trash /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Modal */}
+          {showModal && (
+            <div className="fixed inset-0 bg-black/80 z-50 flex justify-center items-center p-4">
+              <div className="bg-bgPanel w-full max-w-2xl border border-bgBorder rounded-md flex flex-col max-h-[90vh]">
+                <div className="p-4 border-b border-bgBorder flex justify-between items-center">
+                  <h3 className="font-bold text-textMain uppercase tracking-wider">{editingId ? 'Edit Trade' : 'New Trade'}</h3>
+                  <button onClick={() => setShowModal(false)} className="text-textMuted hover:text-textMain">✕</button>
+                </div>
+                <div className="p-6 overflow-y-auto flex-1">
+                  <form id="tradeForm" onSubmit={handleSave} className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><label className="block text-xs text-textMuted mb-1">Date</label><input type="date" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.date} onChange={e=>setForm({...form, date:e.target.value})}/></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Time</label><input type="time" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.time} onChange={e=>setForm({...form, time:e.target.value})}/></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Pair</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.pair} onChange={e=>setForm({...form, pair:e.target.value})}>{PAIR_OPTS.map(p=><option key={p}>{p}</option>)}</select></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Direction</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.direction} onChange={e=>setForm({...form, direction:e.target.value})}><option>LONG</option><option>SHORT</option></select></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Setup</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.setup} onChange={e=>setForm({...form, setup:e.target.value})}>{SETUP_OPTS.map(p=><option key={p}>{p}</option>)}</select></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Session</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.session} onChange={e=>setForm({...form, session:e.target.value})}><option>Asian</option><option>London</option><option>New York</option></select></div>
+                    </div>
+                    
+                    <div className="border-t border-bgBorder pt-4 grid grid-cols-2 gap-4">
+                      <div><label className="block text-xs text-textMuted mb-1">Entry Price *</label><input type="number" step="any" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.entry} onChange={e=>setForm({...form, entry:e.target.value})}/></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Exit Price</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.exit} onChange={e=>setForm({...form, exit:e.target.value})}/></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Stop Loss (SL)</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.sl} onChange={e=>setForm({...form, sl:e.target.value})}/></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Take Profit (TP)</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.tp} onChange={e=>setForm({...form, tp:e.target.value})}/></div>
+                    </div>
+
+                    <div className="border-t border-bgBorder pt-4">
+                      <div><label className="block text-xs text-textMuted mb-1">P&L ($) *</label><input type="number" step="0.01" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.pnl} onChange={e=>setForm({...form, pnl:e.target.value})}/></div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-textMuted mb-2">Mistakes</label>
+                      <div className="flex flex-wrap gap-2">
+                        {MISTAKE_OPTS.map(m => (
+                          <button type="button" key={m} onClick={()=>toggleMistake(m)} className={`px-2 py-1 text-xs rounded border transition-colors ${form.mistakes.includes(m) ? 'bg-[#2A1519] border-loss text-loss' : 'bg-bgMain border-bgBorder text-textMuted hover:border-textDark'}`}>{m}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div><label className="block text-xs text-textMuted mb-1">Notes / Lessons</label><textarea rows="3" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none resize-none" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})}></textarea></div>
+                  </form>
+                </div>
+                <div className="p-4 border-t border-bgBorder flex justify-end gap-3 bg-[#11161D] rounded-b-md">
+                  <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-textMuted hover:text-textMain">Cancel</button>
+                  <button type="submit" form="tradeForm" className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold">Save Trade</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- CALENDAR ---
+    const CalendarView = ({ trades }) => {
+      const today = new Date();
+      const year = today.getFullYear(); const month = today.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDay = new Date(year, month, 1).getDay();
+      
+      const calendarDays = Array.from({ length: 42 }, (_, i) => {
+        const dayNum = i - firstDay + 1;
+        if (dayNum > 0 && dayNum <= daysInMonth) {
+          const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+          const dayTrades = trades.filter(t => t.date === dateStr);
+          const pnl = dayTrades.reduce((sum, t) => sum + t.pnl, 0);
+          return { num: dayNum, date: dateStr, trades: dayTrades.length, pnl };
+        }
+        return null;
+      });
+
+      return (
+        <div className="space-y-4 h-full flex flex-col">
+          <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain mb-2">August 2026 Calendar</h2>
+          <div className="grid grid-cols-7 gap-1 sm:gap-2 -mx-6 sm:mx-0">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="text-center text-[10px] sm:text-xs font-medium text-textMuted uppercase py-2 bg-bgPanel rounded border border-bgBorder">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1 sm:gap-2 -mx-6 sm:mx-0 auto-rows-[56px] sm:auto-rows-[78px]">
+            {calendarDays.map((d, i) => (
+              <div key={i} className={`relative min-w-0 rounded border p-1 sm:p-2 ${!d ? 'border-transparent' : 'bg-bgPanel border-bgBorder'}`}>
+                {d && (
+                  <>
+                    <span className="absolute top-1 right-1 sm:top-2 sm:right-2 text-[10px] sm:text-xs text-textMuted">{d.num}</span>
+                    {d.trades > 0 && (
+                      <div className="h-full flex items-center justify-center pt-3 sm:pt-4">
+                        <div className={`w-[82%] sm:w-[82%] h-[38px] sm:h-[46px] px-1 py-[3px] sm:p-1 rounded-md border bg-bgMain flex flex-col items-center justify-center text-center ${d.pnl >= 0 ? 'border-profit text-profit' : 'border-loss text-loss'}`}>
+                          <div className="max-w-full whitespace-nowrap text-[10px] sm:text-xs font-bold font-mono leading-none">{formatMoney(d.pnl)}</div>
+                          <div className="max-w-full whitespace-nowrap text-[9px] sm:text-[10px] text-textDark mt-1 leading-none">{d.trades} trade{d.trades>1?'s':''}</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // --- ANALYTICS / SETUPS / MISTAKES ---
+    const AnalyticsView = ({ trades }) => {
+      const byPair = PAIR_OPTS.map(p => {
+        const pTrades = trades.filter(t => t.pair === p);
+        const pnl = pTrades.reduce((s, t) => s + t.pnl, 0);
+        const wins = pTrades.filter(t => t.pnl > 0).length;
+        const wr = pTrades.length ? ((wins/pTrades.length)*100).toFixed(0) : 0;
+        return { name: p, count: pTrades.length, pnl, wr };
+      }).filter(x => x.count > 0).sort((a,b) => b.pnl - a.pnl);
+
+      const weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const getWeekday = (trade) => new Date(`${trade.date}T00:00:00`).getDay();
+      const weekdaysToShow = weekdayNames.map((name, index) => ({ name, index })).filter(day =>
+        (day.index >= 1 && day.index <= 5) || trades.some(trade => getWeekday(trade) === day.index)
+      );
+      const weekdayData = weekdaysToShow.map(day => {
+        const dayTrades = trades.filter(trade => getWeekday(trade) === day.index);
+        const pnl = dayTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+        const wins = dayTrades.filter(trade => trade.pnl > 0).length;
+        const losses = dayTrades.filter(trade => trade.pnl < 0).length;
+        const bestTrade = dayTrades.length ? Math.max(...dayTrades.map(trade => trade.pnl)) : null;
+        const worstTrade = dayTrades.length ? Math.min(...dayTrades.map(trade => trade.pnl)) : null;
+        return {
+          ...day,
+          count: dayTrades.length,
+          wins,
+          losses,
+          winRate: dayTrades.length ? ((wins / dayTrades.length) * 100).toFixed(0) : 0,
+          pnl,
+          avgPnl: dayTrades.length ? pnl / dayTrades.length : null,
+          bestTrade,
+          worstTrade
+        };
+      });
+      const activeWeekdays = weekdayData.filter(day => day.count > 0);
+      const bestWeekday = activeWeekdays.length ? activeWeekdays.reduce((best, day) => day.pnl > best.pnl ? day : best) : null;
+      const worstWeekday = activeWeekdays.length ? activeWeekdays.reduce((worst, day) => day.pnl < worst.pnl ? day : worst) : null;
+      const maxWeekdayPnl = Math.max(...activeWeekdays.map(day => Math.abs(day.pnl)), 0);
+      const pnlClass = (value) => value > 0 ? 'text-profit' : value < 0 ? 'text-loss' : 'text-textMuted';
+
+      return (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">Analytics & Performance</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden">
+              <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Performance by Pair</div>
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#11161D] text-textMuted text-xs uppercase"><tr><th className="px-4 py-2">Pair</th><th className="px-4 py-2">Trades</th><th className="px-4 py-2">Win %</th><th className="px-4 py-2 text-right">P&L</th></tr></thead>
+                <tbody className="divide-y divide-bgBorder text-textMain">
+                  {byPair.map(p => (
+                    <tr key={p.name}>
+                      <td className="px-4 py-3 font-medium">{p.name}</td><td className="px-4 py-3">{p.count}</td>
+                      <td className="px-4 py-3">{p.wr}%</td><td className={`px-4 py-3 text-right font-mono ${p.pnl>=0?'text-profit':'text-loss'}`}>{formatMoney(p.pnl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden">
+              <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Mistake Tracker (Impact)</div>
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#11161D] text-textMuted text-xs uppercase"><tr><th className="px-4 py-2">Mistake</th><th className="px-4 py-2">Count</th><th className="px-4 py-2 text-right">Cost</th></tr></thead>
+                <tbody className="divide-y divide-bgBorder text-textMain">
+                  {MISTAKE_OPTS.map(m => {
+                    const mTrades = trades.filter(t => t.mistakes?.includes(m));
+                    const cost = mTrades.reduce((s, t) => s + t.pnl, 0);
+                    return { name: m, count: mTrades.length, cost };
+                  }).filter(x => x.count > 0).sort((a,b) => a.cost - b.cost).map(m => (
+                    <tr key={m.name}>
+                      <td className="px-4 py-3 text-loss">{m.name}</td><td className="px-4 py-3">{m.count}</td>
+                      <td className="px-4 py-3 text-right font-mono text-loss">{formatMoney(m.cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold uppercase tracking-wider text-textMain">Day-of-Week Analysis</h3>
+                <p className="text-textDark text-xs mt-1">Performance grouped by each trade date</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-bgPanel border border-bgBorder rounded-md p-4">
+                <span className="text-textMuted text-xs font-medium uppercase tracking-wider">Best Day</span>
+                {bestWeekday ? <><div className="text-textMain font-semibold mt-2">{bestWeekday.name}</div><div className={`font-mono font-bold mt-1 ${pnlClass(bestWeekday.pnl)}`}>{formatMoney(bestWeekday.pnl)}</div><div className="text-textDark text-xs mt-1">Average R: No Data</div></> : <div className="text-textDark text-sm mt-2">No Data</div>}
+              </div>
+              <div className="bg-bgPanel border border-bgBorder rounded-md p-4">
+                <span className="text-textMuted text-xs font-medium uppercase tracking-wider">Worst Day</span>
+                {worstWeekday ? <><div className="text-textMain font-semibold mt-2">{worstWeekday.name}</div><div className={`font-mono font-bold mt-1 ${pnlClass(worstWeekday.pnl)}`}>{formatMoney(worstWeekday.pnl)}</div><div className="text-textDark text-xs mt-1">Average R: No Data</div></> : <div className="text-textDark text-sm mt-2">No Data</div>}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {weekdayData.map(day => {
+                const barWidth = maxWeekdayPnl > 0 ? (Math.abs(day.pnl) / maxWeekdayPnl) * 100 : 0;
+                return (
+                  <div key={day.name} className="bg-bgPanel border border-bgBorder rounded-md p-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h4 className="text-textMain font-medium">{day.name}</h4>
+                      <span className={`font-mono font-bold text-sm ${pnlClass(day.pnl)}`}>{day.count ? formatMoney(day.pnl) : 'No Data'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-3 mt-4 text-xs">
+                      <div><span className="block text-textDark uppercase">Trades</span><span className="text-textMain font-mono">{day.count}</span></div>
+                      <div><span className="block text-textDark uppercase">Wins</span><span className="text-profit font-mono">{day.wins}</span></div>
+                      <div><span className="block text-textDark uppercase">Losses</span><span className="text-loss font-mono">{day.losses}</span></div>
+                      <div><span className="block text-textDark uppercase">Win Rate</span><span className="text-textMain font-mono">{day.winRate}%</span></div>
+                      <div><span className="block text-textDark uppercase">Avg P&amp;L</span><span className={`font-mono ${day.avgPnl === null ? 'text-textMuted' : pnlClass(day.avgPnl)}`}>{day.avgPnl === null ? 'No Data' : formatMoney(day.avgPnl)}</span></div>
+                      <div><span className="block text-textDark uppercase">Avg R</span><span className="text-textMuted font-mono">No Data</span></div>
+                      <div><span className="block text-textDark uppercase">Best Trade</span><span className={`font-mono ${day.bestTrade === null ? 'text-textMuted' : pnlClass(day.bestTrade)}`}>{day.bestTrade === null ? 'No Data' : formatMoney(day.bestTrade)}</span></div>
+                      <div><span className="block text-textDark uppercase">Worst Trade</span><span className={`font-mono ${day.worstTrade === null ? 'text-textMuted' : pnlClass(day.worstTrade)}`}>{day.worstTrade === null ? 'No Data' : formatMoney(day.worstTrade)}</span></div>
+                    </div>
+                    <div className="mt-4 h-1.5 bg-bgMain rounded overflow-hidden">
+                      <div className={`h-full ${day.pnl > 0 ? 'bg-profit' : day.pnl < 0 ? 'bg-loss' : 'bg-textDark'}`} style={{ width: `${barWidth}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      );
+    };
+
+    // --- SETTINGS ---
+    const SettingsView = ({ trades, setTrades, startingBalance, setStartingBalance }) => {
+      const [localBalance, setLocalBalance] = useState(startingBalance);
+
+      const handleSaveBalance = () => {
+        const parsed = parseFloat(localBalance);
+        if (!isNaN(parsed) && parsed >= 0) {
+          setStartingBalance(parsed);
+          alert("Starting balance successfully updated!");
+        } else {
+          alert("Please enter a valid positive number for the starting balance.");
+          setLocalBalance(startingBalance);
+        }
+      };
+
+      const handleExport = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(trades));
+        const anchor = document.createElement('a'); anchor.href = dataStr; anchor.download = "mishav_journal_backup.json"; anchor.click();
+      };
+      
+      const handleImport = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const imported = JSON.parse(event.target.result);
+            if(Array.isArray(imported)) { setTrades(imported); alert("Import successful!"); }
+          } catch(err) { alert("Invalid JSON file."); }
+        };
+        reader.readAsText(file);
+      };
+
+      const handleClear = () => { if(confirm("DANGER: Clear ALL trades? This cannot be undone.")) setTrades([]); };
+
+      return (
+        <div className="max-w-xl space-y-6">
+          <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">Settings & Data</h2>
+          
+          <div className="bg-bgPanel border border-bgBorder rounded-md p-6 space-y-6 shadow-sm">
+            <div>
+              <h3 className="text-textMain text-sm uppercase tracking-wider mb-2">Account Configuration</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-textMuted mb-1">Starting Balance ($)</label>
+                  <div className="flex gap-3">
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      value={localBalance} 
+                      onChange={(e) => setLocalBalance(e.target.value)} 
+                      className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none"
+                    />
+                    <button 
+                      onClick={handleSaveBalance} 
+                      className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-textDark mt-1">This balance determines your percentage returns and drawdown statistics.</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-textMuted mb-1">Account Currency</label>
+                  <input type="text" disabled value="USD" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textDark cursor-not-allowed"/>
+                </div>
+              </div>
+            </div>
+            
+            <div className="pt-4 border-t border-bgBorder">
+              <h3 className="text-textMain text-sm uppercase tracking-wider mb-4">Data Management</h3>
+              <div className="flex gap-4">
+                <button onClick={handleExport} className="bg-bgMain border border-bgBorder hover:border-accent text-textMain px-4 py-2 rounded text-sm transition-colors flex-1">Export JSON</button>
+                <label className="bg-bgMain border border-bgBorder hover:border-accent text-textMain px-4 py-2 rounded text-sm transition-colors cursor-pointer flex-1 text-center">
+                  Import JSON
+                  <input type="file" accept=".json" className="hidden" onChange={handleImport} />
+                </label>
+              </div>
+              <button onClick={handleClear} className="w-full mt-4 bg-[#2A1519] border border-loss text-loss hover:bg-loss hover:text-white px-4 py-2 rounded text-sm font-bold transition-colors">CLEAR ALL LOCAL DATA</button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- GOALS ---
+    const GOAL_TYPES = ['Trades', 'Days', 'Percentage', 'USD', 'R', 'Custom'];
+    const GoalsView = ({ goals, setGoals }) => {
+      const emptyForm = { name: '', description: '', type: 'Trades', targetValue: '', currentValue: '', deadline: '' };
+      const [showModal, setShowModal] = useState(false);
+      const [editingId, setEditingId] = useState(null);
+      const [form, setForm] = useState(emptyForm);
+
+      const openNewGoal = () => {
+        setForm(emptyForm);
+        setEditingId(null);
+        setShowModal(true);
+      };
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        const targetValue = parseFloat(form.targetValue);
+        const currentValue = parseFloat(form.currentValue);
+        if (!Number.isFinite(targetValue) || targetValue <= 0 || !Number.isFinite(currentValue) || currentValue < 0) return;
+
+        const goal = {
+          id: editingId || Date.now().toString(),
+          name: form.name.trim(),
+          description: form.description.trim(),
+          type: form.type,
+          targetValue,
+          currentValue,
+          deadline: form.deadline
+        };
+        setGoals(editingId ? goals.map(item => item.id === editingId ? goal : item) : [...goals, goal]);
+        setShowModal(false);
+        setEditingId(null);
+        setForm(emptyForm);
+      };
+
+      const handleEdit = (goal) => {
+        setForm({ ...goal, targetValue: String(goal.targetValue), currentValue: String(goal.currentValue) });
+        setEditingId(goal.id);
+        setShowModal(true);
+      };
+
+      const handleDelete = (id) => {
+        if (confirm('Delete this goal?')) setGoals(goals.filter(goal => goal.id !== id));
+      };
+
+      const formatGoalValue = (value, type) => {
+        const display = Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+        if (type === 'Trades') return `${display} trades`;
+        if (type === 'Days') return `${display} days`;
+        if (type === 'Percentage') return `${display}%`;
+        if (type === 'USD') return `$${display}`;
+        if (type === 'R') return `${display}R`;
+        return display;
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">Goals</h2>
+            <button type="button" onClick={openNewGoal} className="min-h-11 bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 transition-colors">
+              <Icons.Plus /> Add Goal
+            </button>
+          </div>
+
+          {goals.length === 0 ? (
+            <div className="bg-bgPanel border border-bgBorder rounded-md p-6 sm:p-8 text-center">
+              <p className="text-textMain font-medium">No goals yet</p>
+              <p className="text-textMuted text-sm mt-2">Create your first goal and start tracking your progress.</p>
+              <button type="button" onClick={openNewGoal} className="min-h-11 mt-5 bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold inline-flex items-center gap-2 transition-colors">
+                <Icons.Plus /> Add Goal
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {goals.map(goal => {
+                const percentage = Math.max(0, Math.min(100, (goal.currentValue / goal.targetValue) * 100));
+                const percentageLabel = Number.isInteger(percentage) ? percentage : percentage.toFixed(1);
+                return (
+                  <div key={goal.id} className="bg-bgPanel border border-bgBorder rounded-md p-5 space-y-4 min-w-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className="text-textMain font-semibold break-words">{goal.name}</h3>
+                        {goal.description && <p className="text-textMuted text-sm mt-1 break-words">{goal.description}</p>}
+                      </div>
+                      <span className="shrink-0 text-[10px] uppercase font-bold tracking-wider text-accent border border-accent/40 rounded px-2 py-1">{goal.type}</span>
+                    </div>
+                    <div>
+                      <div className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="text-textMain font-mono min-w-0 break-words">{formatGoalValue(goal.currentValue, goal.type)} / {formatGoalValue(goal.targetValue, goal.type)}</span>
+                        <span className="text-profit font-mono font-bold shrink-0">{percentageLabel}%</span>
+                      </div>
+                      <p className="text-textDark text-xs mt-1">{percentageLabel}% complete</p>
+                      <div className="h-2 mt-3 bg-bgMain border border-bgBorder rounded overflow-hidden">
+                        <div className="h-full bg-profit" style={{ width: `${percentage}%` }} />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-3 border-t border-bgBorder pt-4 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-xs text-textDark">{goal.deadline ? `Deadline: ${new Date(`${goal.deadline}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'No deadline'}</span>
+                      <div className="grid grid-cols-2 gap-2 sm:flex">
+                        <button type="button" onClick={() => handleEdit(goal)} className="min-h-11 px-4 border border-bgBorder hover:border-accent text-textMuted hover:text-accent rounded text-sm transition-colors">Edit</button>
+                        <button type="button" onClick={() => handleDelete(goal.id)} className="min-h-11 px-4 border border-loss/60 hover:bg-loss hover:text-white text-loss rounded text-sm transition-colors">Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {showModal && (
+            <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+              <div className="bg-bgPanel w-full max-w-lg border border-bgBorder rounded-md flex flex-col max-h-[90vh]">
+                <div className="p-4 border-b border-bgBorder flex justify-between items-center">
+                  <h3 className="font-bold text-textMain uppercase tracking-wider">{editingId ? 'Edit Goal' : 'New Goal'}</h3>
+                  <button type="button" aria-label="Close goal form" onClick={() => setShowModal(false)} className="min-h-11 min-w-11 text-textMuted hover:text-textMain">×</button>
+                </div>
+                <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                  <form id="goalForm" onSubmit={handleSave} className="space-y-4">
+                    <div><label className="block text-xs text-textMuted mb-1">Goal Name</label><input type="text" required className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                    <div><label className="block text-xs text-textMuted mb-1">Description <span className="text-textDark">(optional)</span></label><textarea rows="3" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none resize-none" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}></textarea></div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div><label className="block text-xs text-textMuted mb-1">Goal Type</label><select className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>{GOAL_TYPES.map(type => <option key={type}>{type}</option>)}</select></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Deadline <span className="text-textDark">(optional)</span></label><input type="date" className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} /></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Target Value</label><input type="number" min="0.01" step="any" required className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none" value={form.targetValue} onChange={e => setForm({ ...form, targetValue: e.target.value })} /></div>
+                      <div><label className="block text-xs text-textMuted mb-1">Current Value</label><input type="number" min="0" step="any" required className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none" value={form.currentValue} onChange={e => setForm({ ...form, currentValue: e.target.value })} /></div>
+                    </div>
+                  </form>
+                </div>
+                <div className="p-4 border-t border-bgBorder flex flex-col-reverse gap-2 sm:flex-row sm:justify-end bg-[#11161D] rounded-b-md">
+                  <button type="button" onClick={() => setShowModal(false)} className="min-h-11 px-4 text-sm text-textMuted hover:text-textMain">Cancel</button>
+                  <button type="submit" form="goalForm" className="min-h-11 bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold">{editingId ? 'Save Goal' : 'Create Goal'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ==========================================
+    // 5. MAIN APP CONTAINER
+    // ==========================================
+    const App = () => {
+      const [view, setView] = useState('dashboard');
+      const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+      
+      const [trades, setTrades] = useState(() => {
+        const saved = localStorage.getItem('mishav_trades');
+        return saved ? JSON.parse(saved) : SAMPLE_TRADES;
+      });
+
+      const [startingBalance, setStartingBalance] = useState(() => {
+        const savedBalance = localStorage.getItem('mishav_balance');
+        return savedBalance ? parseFloat(savedBalance) : 50000;
+      });
+
+      const [goals, setGoals] = useState(() => {
+        const savedGoals = localStorage.getItem('mishav_goals');
+        try {
+          return savedGoals ? JSON.parse(savedGoals) : [];
+        } catch (err) {
+          return [];
+        }
+      });
+
+      useEffect(() => {
+        localStorage.setItem('mishav_trades', JSON.stringify(trades));
+      }, [trades]);
+
+      useEffect(() => {
+        localStorage.setItem('mishav_balance', startingBalance.toString());
+      }, [startingBalance]);
+
+      useEffect(() => {
+        localStorage.setItem('mishav_goals', JSON.stringify(goals));
+      }, [goals]);
+
+      const navItems = [
+        { id: 'dashboard', label: 'Dashboard', icon: <Icons.Dashboard /> },
+        { id: 'journal', label: 'Journal', icon: <Icons.Book /> },
+        { id: 'trades', label: 'Trades', icon: <Icons.List /> },
+        { id: 'analytics', label: 'Analytics', icon: <Icons.Activity /> },
+        { id: 'calendar', label: 'Calendar', icon: <Icons.Calendar /> },
+        { id: 'goals', label: 'Goals', icon: <Icons.Target /> },
+        { id: 'settings', label: 'Settings', icon: <Icons.Settings /> },
+      ];
+
+      const renderView = () => {
+        switch(view) {
+          case 'dashboard': return <DashboardView trades={trades} startingBalance={startingBalance} />;
+          case 'journal': return <JournalView trades={trades} />;
+          case 'trades': return <TradesView trades={trades} setTrades={setTrades} />;
+          case 'calendar': return <CalendarView trades={trades} />;
+          case 'analytics': return <AnalyticsView trades={trades} />;
+          case 'settings': return <SettingsView trades={trades} setTrades={setTrades} startingBalance={startingBalance} setStartingBalance={setStartingBalance} />;
+          case 'goals': return <GoalsView goals={goals} setGoals={setGoals} />;
+          default: return <DashboardView trades={trades} startingBalance={startingBalance} />;
+        }
+      };
+
+      const totalBalance = startingBalance + trades.reduce((s,t) => s + t.pnl, 0);
+      const handleNavigation = (nextView) => {
+        setView(nextView);
+        setIsMobileNavOpen(false);
+      };
+
+      return (
+        <div className="flex h-screen w-full overflow-hidden bg-bgMain text-textMain selection:bg-accent/30 selection:text-white font-sans">
+          {isMobileNavOpen && (
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={() => setIsMobileNavOpen(false)}
+              className="fixed inset-x-0 bottom-0 top-16 z-20 bg-black/60 md:hidden"
+            />
+          )}
+
+          <aside
+            id="mobile-navigation"
+            className={`fixed inset-y-0 left-0 z-30 flex w-64 shrink-0 flex-col justify-between border-r border-bgBorder bg-bgPanel shadow-xl transform transition-transform duration-200 ease-out ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-auto md:translate-x-0 md:shadow-none md:transition-none`}
+          >
+            <div>
+              <div className="p-6">
+                <h1 className="text-textMain font-black text-xl uppercase tracking-[0.2em]">MISHAV</h1>
+                <p className="text-textDark text-[10px] uppercase font-bold tracking-widest mt-1">Trading Journal</p>
+              </div>
+              <nav className="mt-2 flex flex-col gap-1 px-3">
+                {navItems.map(item => (
+                  <button type="button" key={item.id} onClick={() => handleNavigation(item.id)} className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-md text-sm font-medium transition-all ${view === item.id ? 'bg-bgBorder text-accent' : 'text-textMuted hover:bg-bgMain hover:text-textMain'}`}>
+                    {item.icon} {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            <div className="p-4 border-t border-bgBorder space-y-2">
+              <div className="px-4 py-2 bg-bgMain border border-bgBorder rounded text-center">
+                <span className="text-[10px] text-textMuted uppercase block">Edge Score</span>
+                <span className="text-accent font-bold font-mono">76.6 / 100</span>
+              </div>
+            </div>
+          </aside>
+
+          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
+            <header className="h-16 flex items-center justify-between px-6 bg-bgMain/80 backdrop-blur-sm border-b border-bgBorder sticky top-0 z-10 shrink-0">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  aria-label={isMobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                  aria-expanded={isMobileNavOpen}
+                  aria-controls="mobile-navigation"
+                  onClick={() => setIsMobileNavOpen(open => !open)}
+                  className="md:hidden relative z-30 -m-2 min-h-11 min-w-11 p-2 text-textMuted hover:text-textMain cursor-pointer pointer-events-auto touch-manipulation"
+                ><Icons.List /></button>
+                <div>
+                  <h2 className="text-textMain font-semibold uppercase tracking-wider text-sm">{navItems.find(n=>n.id===view)?.label || 'Dashboard'}</h2>
+                </div>
+              </div>
+              <div className="text-right flex items-center gap-6">
+                <div>
+                  <p className="text-textDark text-[10px] uppercase font-bold tracking-widest">Account Balance</p>
+                  <p className="text-textMain font-mono font-bold">{formatMoney(totalBalance)}</p>
+                </div>
+              </div>
+            </header>
+
+            <main className="flex-1 overflow-y-auto p-6 scroll-smooth">
+              <div className="max-w-7xl mx-auto h-full">
+                {renderView()}
+              </div>
+            </main>
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
