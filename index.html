@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mishav Trading Journal</title>
   
-  <!-- React & ReactDOM (Lightweight UMD builds) -->
+  <!-- React & ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <!-- FIX: Corrected typo in the react-dom script URL from unpkg-com to unpkg.com -->
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel for in-browser JSX compilation -->
+  <!-- Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script>
     tailwind.config = {
@@ -43,39 +44,85 @@
     ::-webkit-scrollbar-track { background: #080A0D; }
     ::-webkit-scrollbar-thumb { background: #11161D; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #6F7885; }
-    .glass-panel { background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(4px); }
-    /* Keep touch controls responsive without changing the visual design. */
-    button, label { touch-action: manipulation; }
+    /* Checkbox custom styles */
+    input[type="checkbox"] {
+      appearance: none; background-color: transparent; margin: 0; font: inherit; color: currentColor;
+      width: 1.15em; height: 1.15em; border: 1px solid #11161D; border-radius: 0.15em; display: grid; place-content: center;
+    }
+    input[type="checkbox"]::before {
+      content: ""; width: 0.65em; height: 0.65em; transform: scale(0); transition: 120ms transform ease-in-out;
+      box-shadow: inset 1em 1em var(--checkbox-color, #00E5FF); background-color: var(--checkbox-color, #00E5FF);
+      transform-origin: center; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    }
+    input[type="checkbox"]:checked::before { transform: scale(1); }
+    input[type="checkbox"]:focus { outline: max(2px, 0.15em) solid #11161D; outline-offset: max(2px, 0.15em); }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
 
     // ==========================================
-    // 1. SAMPLE DATA & UTILS
+    // 1. CONSTANTS & UTILS
     // ==========================================
-    const SAMPLE_TRADES = [
-      { id: '1', date: '2026-08-01', time: '09:30', pair: 'XAUUSD', direction: 'LONG', session: 'New York', setup: 'Liquidity Sweep', result: 'WIN', pnl: 250, entry: 2400.50, exit: 2405.50, sl: 2395.00, tp: 2410.00, mistakes: [], notes: 'Followed plan perfectly.' },
-      { id: '2', date: '2026-08-02', time: '14:15', pair: 'EURUSD', direction: 'SHORT', session: 'London', setup: 'Break of Structure', result: 'LOSS', pnl: -120, entry: 1.0950, exit: 1.0965, sl: 1.0965, tp: 1.0900, mistakes: ['FOMO', 'Early Entry'], notes: 'Entered before 15m candle close.' },
-      { id: '3', date: '2026-08-03', time: '08:00', pair: 'GBPUSD', direction: 'LONG', session: 'London', setup: 'Fair Value Gap', result: 'WIN', pnl: 300, entry: 1.2700, exit: 1.2750, sl: 1.2680, tp: 1.2750, mistakes: [], notes: 'Clean bounce off 1H FVG.' },
-      { id: '4', date: '2026-08-04', time: '10:30', pair: 'XAUUSD', direction: 'SHORT', session: 'New York', setup: 'Liquidity Sweep', result: 'LOSS', pnl: -150, entry: 2415.00, exit: 2418.00, sl: 2418.00, tp: 2405.00, mistakes: ['Moved SL'], notes: 'Widened stop loss, taking larger hit than planned.' },
-      { id: '5', date: '2026-08-04', time: '15:00', pair: 'USDJPY', direction: 'LONG', session: 'New York', setup: 'Continuation', result: 'WIN', pnl: 180, entry: 150.20, exit: 150.60, sl: 149.90, tp: 150.80, mistakes: [], notes: 'Re-entry on pullback.' },
-      { id: '6', date: '2026-08-05', time: '02:00', pair: 'USDJPY', direction: 'SHORT', session: 'Asian', setup: 'Reversal', result: 'BREAKEVEN', pnl: 0, entry: 151.00, exit: 151.00, sl: 151.50, tp: 150.00, mistakes: ['Moved TP'], notes: 'Closed at BE as momentum died.' },
-      { id: '7', date: '2026-08-06', time: '09:00', pair: 'EURUSD', direction: 'LONG', session: 'London', setup: 'Break of Structure', result: 'WIN', pnl: 400, entry: 1.0880, exit: 1.0930, sl: 1.0860, tp: 1.0950, mistakes: [], notes: 'Excellent trend continuation.' },
-      { id: '8', date: '2026-08-07', time: '11:00', pair: 'XAUUSD', direction: 'SHORT', session: 'New York', setup: 'Liquidity Sweep', result: 'LOSS', pnl: -100, entry: 2420.00, exit: 2422.50, sl: 2422.50, tp: 2410.00, mistakes: ['Revenge Trading'], notes: 'Tilted after missing earlier move.' },
-      { id: '9', date: '2026-08-07', time: '11:30', pair: 'XAUUSD', direction: 'SHORT', session: 'New York', setup: 'Fair Value Gap', result: 'LOSS', pnl: -100, entry: 2425.00, exit: 2427.50, sl: 2427.50, tp: 2415.00, mistakes: ['Overtrading', 'Emotional Entry'], notes: 'Took another trade immediately after loss.' },
-      { id: '10', date: '2026-08-10', time: '08:30', pair: 'GBPUSD', direction: 'LONG', session: 'London', setup: 'Breakout', result: 'WIN', pnl: 220, entry: 1.2800, exit: 1.2840, sl: 1.2780, tp: 1.2850, mistakes: [], notes: 'Solid pre-NY volume push.' }
+    const MISTAKE_OPTS = ['FOMO', 'Revenge Trading', 'Overtrading', 'Early Entry', 'Late Entry', 'Moved SL', 'Moved TP', 'Oversized Risk', 'No Confirmation', 'Ignored Trading Plan', 'Chased Price', 'Emotional Entry'];
+    const PAIR_OPTS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'US30', 'NAS100'];
+    const GOAL_TYPES = ['Custom', 'Percentage', 'Trades', 'Account Balance', 'Net P&L', 'Monthly P&L', 'Win Rate', 'Profit Factor', 'Maximum Drawdown', 'Number of Trades', 'R Multiple', 'Rule Adherence'];
+
+    const CHECKLIST_RULES = [
+      { key: 'sessionTiming', title: 'Trading within the defined session timing.' },
+      { key: 'physicallyPresent', title: 'Physically present for the setup.' },
+      { key: 'entryModel', title: 'Trading according to the defined entry model.' },
+      { key: 'validZone', title: 'Trading inside a valid trading zone.', sub: 'Valid zones:\nQML\nISS WAVE 4\nTJL 2' },
+      { key: 'confirmation', title: 'Confirmation received.', sub: 'Valid confirmations:\nCHoCH\nRetest Sweep\nBullish Engulfing Candle\nBearish Engulfing Candle' }
     ];
 
-    const MISTAKE_OPTS = ['FOMO', 'Revenge Trading', 'Overtrading', 'Early Entry', 'Late Entry', 'Moved SL', 'Moved TP', 'Oversized Risk', 'No Confirmation', 'Ignored Trading Plan', 'Chased Price', 'Emotional Entry'];
-    const SETUP_OPTS = ['Liquidity Sweep', 'Break of Structure', 'Fair Value Gap', 'Supply & Demand', 'Breakout', 'Reversal', 'Continuation'];
-    const PAIR_OPTS = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'US30', 'NAS100'];
-
     const formatMoney = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-    const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const toMinutes = (timeObj) => {
+      let h = parseInt(timeObj.h, 10);
+      if (timeObj.a === 'PM' && h !== 12) h += 12;
+      if (timeObj.a === 'AM' && h === 12) h = 0;
+      return h * 60 + parseInt(timeObj.m, 10);
+    };
+
+    const format12Hour = (timeObj) => `${timeObj.h}:${timeObj.m} ${timeObj.a}`;
+    
+    const format12To24 = (timeObj) => {
+      let h = parseInt(timeObj.h, 10);
+      if (timeObj.a === 'PM' && h !== 12) h += 12;
+      if (timeObj.a === 'AM' && h === 12) h = 0;
+      return `${h.toString().padStart(2, '0')}:${timeObj.m}`;
+    };
+
+    const parse24To12 = (timeStr) => {
+      if (!timeStr) return { h: '12', m: '00', a: 'PM' };
+      const [hStr, mStr] = timeStr.split(':');
+      let h = parseInt(hStr, 10);
+      let a = 'AM';
+      if (h >= 12) { a = 'PM'; if (h > 12) h -= 12; }
+      if (h === 0) h = 12;
+      return { h: h.toString(), m: mStr, a };
+    };
+
+    const checkOverlap = (sessions) => {
+      let intervals = [];
+      for (const s of sessions) {
+         if (s.start === s.end) return true;
+         if (s.start < s.end) intervals.push({start: s.start, end: s.end});
+         else { intervals.push({start: s.start, end: 1440}); intervals.push({start: 0, end: s.end}); }
+      }
+      for (let i = 0; i < intervals.length; i++) {
+        for (let j = i + 1; j < intervals.length; j++) {
+          const a = intervals[i], b = intervals[j];
+          if (Math.max(a.start, b.start) < Math.min(a.end, b.end)) return true;
+        }
+      }
+      return false;
+    };
 
     // ==========================================
     // 2. ICONS
@@ -95,84 +142,39 @@
     // ==========================================
     // 3. CORE COMPONENTS
     // ==========================================
-    const StatCard = ({ label, value, subtext, subtextClass = 'text-textDark', type = 'neutral' }) => {
+    const TimePicker = ({ label, value, onChange, isCompact = false }) => (
+      <div>
+        <label className={`block text-textMuted mb-1 ${isCompact ? 'text-[10px] uppercase tracking-widest' : 'text-xs'}`}>{label}</label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+             <select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none appearance-none font-mono" value={value.h} onChange={e=>onChange({...value, h:e.target.value})}>
+               {[...Array(12)].map((_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
+             </select>
+             <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-textMuted text-[10px]">▼</div>
+          </div>
+          <div className="relative flex-1">
+             <select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none appearance-none font-mono" value={value.m} onChange={e=>onChange({...value, m:e.target.value})}>
+               {['00','05','10','15','20','25','30','35','40','45','50','55'].map(m => <option key={m} value={m}>{m}</option>)}
+             </select>
+             <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-textMuted text-[10px]">▼</div>
+          </div>
+          <div className="relative flex-1">
+             <select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none appearance-none font-mono" value={value.a} onChange={e=>onChange({...value, a:e.target.value})}>
+               <option value="AM">AM</option><option value="PM">PM</option>
+             </select>
+             <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-textMuted text-[10px]">▼</div>
+          </div>
+        </div>
+      </div>
+    );
+
+    const StatCard = ({ label, value, subtext, type = 'neutral' }) => {
       const colorClass = type === 'profit' ? 'text-profit' : type === 'loss' ? 'text-loss' : type === 'accent' ? 'text-accent' : 'text-textMain';
       return (
         <div className="bg-bgPanel border border-bgBorder rounded-md p-4 shadow-sm flex flex-col">
           <span className="text-textMuted text-xs font-medium uppercase tracking-wider mb-1">{label}</span>
           <span className={`text-2xl font-mono font-bold ${colorClass}`}>{value}</span>
-          {subtext && <span className={`${subtextClass} text-xs mt-1`}>{subtext}</span>}
-        </div>
-      );
-    };
-
-    const AccountProgress = ({ accountReturn, currentProfit }) => {
-      const [target, setTarget] = useState(() => {
-        const savedTarget = localStorage.getItem('mishav_account_progress_target');
-        try {
-          const parsed = savedTarget ? JSON.parse(savedTarget) : null;
-          return parsed && ['Percentage', 'USD'].includes(parsed.type)
-            ? { type: parsed.type, value: parsed.value ?? '' }
-            : { type: 'Percentage', value: '' };
-        } catch (err) {
-          return { type: 'Percentage', value: '' };
-        }
-      });
-
-      useEffect(() => {
-        localStorage.setItem('mishav_account_progress_target', JSON.stringify(target));
-      }, [target]);
-
-      const targetValue = parseFloat(target.value);
-      const hasTarget = Number.isFinite(targetValue) && targetValue > 0;
-      const progressSource = target.type === 'Percentage' ? accountReturn : currentProfit;
-      const actualProgress = hasTarget ? (progressSource / targetValue) * 100 : 0;
-      const visualProgress = Math.min(100, Math.abs(actualProgress));
-      const displayProgress = Math.abs(actualProgress).toFixed(0);
-      const colorClass = progressSource > 0 ? 'text-profit' : progressSource < 0 ? 'text-loss' : 'text-accent';
-      const returnLabel = `${accountReturn > 0 ? '+' : ''}${accountReturn.toFixed(2)}%`;
-      const targetLabel = hasTarget ? `${targetValue > 0 ? '+' : ''}${target.type === 'USD' ? `$${targetValue.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : `${targetValue}%`}` : 'Not set';
-      const radius = 56;
-      const circumference = 2 * Math.PI * radius;
-      const dashOffset = circumference * (1 - visualProgress / 100);
-
-      return (
-        <div className="bg-bgPanel border border-bgBorder rounded-md p-5">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-5">
-              <div className={`relative w-36 h-36 sm:w-40 sm:h-40 shrink-0 ${colorClass}`}>
-                <svg viewBox="0 0 128 128" className="w-full h-full -rotate-90" aria-label="Account progress ring">
-                  <circle cx="64" cy="64" r={radius} fill="none" stroke="#11161D" strokeWidth="7" />
-                  <circle cx="64" cy="64" r={radius} fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset} />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center rotate-0">
-                  <span className={`text-lg sm:text-xl font-mono font-bold ${colorClass}`}>{returnLabel}</span>
-                  <span className={`mt-1 text-[10px] font-bold tracking-wider ${colorClass}`}>{hasTarget ? `${displayProgress}% OF TARGET` : 'SET TARGET'}</span>
-                </div>
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-textMain text-sm font-medium uppercase tracking-wider">Account Progress</h3>
-                <div className="mt-3 space-y-1 text-sm">
-                  <div className="flex gap-2"><span className="text-textMuted">Current Return:</span><span className={`font-mono font-bold ${colorClass}`}>{returnLabel}</span></div>
-                  <div className="flex gap-2"><span className="text-textMuted">Target:</span><span className="font-mono text-textMain">{targetLabel}</span></div>
-                  <div className="flex gap-2"><span className="text-textMuted">Target Type:</span><span className="text-textMain">{target.type}</span></div>
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 w-full sm:w-56 shrink-0">
-              <div>
-                <label className="block text-xs text-textMuted mb-1">Target Type</label>
-                <select value={target.type} onChange={e => setTarget({ ...target, type: e.target.value })} className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none">
-                  <option>Percentage</option>
-                  <option>USD</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-textMuted mb-1">Target</label>
-                <input type="number" min="0.01" step="any" inputMode="decimal" value={target.value} onChange={e => setTarget({ ...target, value: e.target.value })} placeholder={target.type === 'USD' ? 'USD amount' : 'Percentage'} className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none" />
-              </div>
-            </div>
-          </div>
+          {subtext && <span className="text-textDark text-xs mt-1">{subtext}</span>}
         </div>
       );
     };
@@ -232,7 +234,7 @@
     // ==========================================
     
     // --- DASHBOARD ---
-    const DashboardView = ({ trades, startingBalance }) => {
+    const DashboardView = ({ trades, startingBalance, dashboardTarget, setDashboardTarget, dashboardTargetType, setDashboardTargetType }) => {
       const stats = useMemo(() => {
         let net = 0, wins = 0, losses = 0, grossWin = 0, grossLoss = 0, maxDd = 0, peak = 0;
         trades.forEach(t => {
@@ -259,22 +261,33 @@
         });
       }, [trades]);
 
-      const recent = [...trades].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
-      
-      const currentBalance = startingBalance + stats.net;
-      const accountReturn = startingBalance > 0 ? ((currentBalance - startingBalance) / startingBalance) * 100 : 0;
-      const accountReturnLabel = `${accountReturn > 0 ? '+' : ''}${accountReturn.toFixed(2)}% Return`;
-      const accountReturnClass = accountReturn > 0 ? 'text-profit' : accountReturn < 0 ? 'text-loss' : 'text-textMuted';
+      const netPct = startingBalance > 0 ? ((stats.net / startingBalance) * 100) : 0;
       const maxDdPct = startingBalance > 0 ? ((stats.maxDd / startingBalance) * 100).toFixed(2) : '0.00';
       
-      // Calculate Edge Score safely without referencing R
       const isPfGood = stats.pf === '∞' || parseFloat(stats.pf) > 1;
       const edgeScore = (parseFloat(stats.winRate) * 0.8 + (isPfGood ? 20 : 0)).toFixed(0);
 
+      const targetVal = parseFloat(dashboardTarget) || 0;
+      let rawProgress = 0;
+      if (targetVal !== 0) {
+        rawProgress = dashboardTargetType === 'Percentage' 
+          ? (netPct / targetVal) * 100 
+          : (stats.net / targetVal) * 100;
+      }
+      
+      const isPositive = stats.net >= 0;
+      const progressColor = isPositive ? '#00FFB2' : '#FF4D67';
+      const progressClass = isPositive ? 'text-profit' : 'text-loss';
+      const circleProgress = Math.min(Math.abs(rawProgress), 100);
+
+      const radius = 64;
+      const circumference = 2 * Math.PI * radius;
+      const offset = circumference - (circleProgress / 100) * circumference;
+
       return (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Net P&L" value={formatMoney(stats.net)} type={stats.net >= 0 ? 'profit' : 'loss'} subtext={accountReturnLabel} subtextClass={accountReturnClass} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <StatCard label="Net P&L" value={formatMoney(stats.net)} type={stats.net >= 0 ? 'profit' : 'loss'} subtext={`${stats.net >= 0 ? '+' : ''}${netPct.toFixed(2)}% Return`} />
             <StatCard label="Win Rate" value={`${stats.winRate}%`} subtext={`${stats.wins}W / ${stats.losses}L`} />
             <StatCard label="Profit Factor" value={stats.pf} type="accent" />
             <StatCard label="Total Trades" value={stats.count} />
@@ -282,7 +295,61 @@
             <StatCard label="Max Drawdown" value={formatMoney(-stats.maxDd)} type="loss" subtext={`-${maxDdPct}% of Balance`} />
           </div>
 
-          <AccountProgress accountReturn={accountReturn} currentProfit={stats.net} />
+          <div className="bg-bgPanel border border-bgBorder rounded-md p-6 flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
+            <div className="flex flex-col md:flex-row items-center gap-8 flex-1 w-full">
+              <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90">
+                  <circle cx="72" cy="72" r="64" stroke="#11161D" strokeWidth="8" fill="none" />
+                  <circle cx="72" cy="72" r="64" stroke={progressColor} strokeWidth="8" fill="none" strokeDasharray={circumference} strokeDashoffset={offset} className="transition-all duration-500" strokeLinecap="round" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span className={`text-2xl font-bold font-mono ${progressClass}`}>{netPct > 0 ? '+' : ''}{netPct.toFixed(2)}%</span>
+                  <span className={`text-[10px] font-bold uppercase mt-1 ${progressClass}`}>{Math.abs(rawProgress).toFixed(0)}% OF TARGET</span>
+                </div>
+              </div>
+
+              <div className="text-center md:text-left flex flex-col justify-center w-full">
+                <h3 className="text-base font-bold text-textMain uppercase tracking-wider mb-4">Account Progress</h3>
+                <div className="space-y-2.5 text-sm">
+                  <div className="flex items-center">
+                    <span className="text-textMuted w-32 text-left">Current Return:</span> 
+                    <span className={`font-mono font-bold ${progressClass}`}>
+                      {dashboardTargetType === 'Percentage' ? `${netPct > 0 ? '+' : ''}${netPct.toFixed(2)}%` : `${stats.net > 0 ? '+' : ''}${formatMoney(stats.net)}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-textMuted w-32 text-left">Target:</span> 
+                    <span className="font-mono font-bold text-textMain">
+                      {dashboardTargetType === 'Percentage' ? `+${targetVal}%` : `+${formatMoney(targetVal)}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-textMuted w-32 text-left">Target Type:</span> 
+                    <span className="text-textMain">{dashboardTargetType}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 w-full md:w-64 space-y-4">
+              <div>
+                <label className="block text-sm text-textMuted mb-2">Target Type</label>
+                <div className="relative">
+                  <select className="w-full bg-bgMain border border-bgBorder rounded-md p-2.5 text-sm text-textMain focus:border-accent outline-none appearance-none" value={dashboardTargetType} onChange={e => setDashboardTargetType(e.target.value)}>
+                    <option value="Percentage">Percentage</option>
+                    <option value="USD">USD</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-textMain">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-textMuted mb-2">Target</label>
+                <input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded-md p-2.5 text-sm text-textMain focus:border-accent outline-none font-mono" value={dashboardTarget} onChange={e => setDashboardTarget(e.target.value)} />
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col h-[350px]">
@@ -300,42 +367,13 @@
               <div className="flex-1 flex flex-col justify-center items-center gap-6">
                 <div className="relative w-32 h-32 rounded-full border-4 border-bgBorder flex items-center justify-center">
                   <div className="absolute inset-2 rounded-full border-4 border-accent opacity-20 border-t-accent opacity-100 animate-[spin_3s_linear_infinite]"></div>
-                  <span className="text-3xl font-bold font-mono text-textMain">{edgeScore}</span>
+                  <span className="text-3xl font-bold font-mono text-textMain">{isNaN(edgeScore) ? '0' : edgeScore}</span>
                 </div>
                 <div className="w-full text-xs text-textMuted space-y-2">
                   <div className="flex justify-between"><span>Consistency</span><span className="text-profit">High</span></div>
                   <div className="flex justify-between"><span>Risk Mgmt</span><span className="text-accent">Stable</span></div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden">
-            <div className="p-4 border-b border-bgBorder">
-              <h3 className="text-textMain text-sm font-medium uppercase tracking-wider">Recent Trades</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-[#11161D] text-textMuted text-xs uppercase font-medium">
-                  <tr>
-                    <th className="px-4 py-3">Date</th><th className="px-4 py-3">Pair</th>
-                    <th className="px-4 py-3">Dir</th><th className="px-4 py-3">Setup</th>
-                    <th className="px-4 py-3 text-right">Entry</th><th className="px-4 py-3 text-right">P&L</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-bgBorder text-textMain">
-                  {recent.map(t => (
-                    <tr key={t.id} className="hover:bg-bgBorder transition-colors">
-                      <td className="px-4 py-3 text-textMuted font-mono">{formatDate(t.date)}</td>
-                      <td className="px-4 py-3 font-medium">{t.pair}</td>
-                      <td className={`px-4 py-3 text-xs font-bold ${t.direction==='LONG'?'text-accent':'text-loss'}`}>{t.direction}</td>
-                      <td className="px-4 py-3 text-textMuted">{t.setup}</td>
-                      <td className="px-4 py-3 text-right font-mono">{t.entry || '-'}</td>
-                      <td className={`px-4 py-3 text-right font-mono font-bold ${t.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(t.pnl)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
         </div>
@@ -345,83 +383,193 @@
     // --- JOURNAL ---
     const JournalView = ({ trades }) => {
       const sorted = [...trades].sort((a,b) => new Date(b.date) - new Date(a.date));
+      
       return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain mb-4">Trading Journal</h2>
+          
+          {sorted.length === 0 && (
+            <div className="text-center p-12 bg-bgPanel border border-bgBorder rounded-md text-textMuted">
+              No journal entries yet. Add a trade to get started.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sorted.map(t => (
-              <div key={t.id} className={`bg-bgPanel border-l-4 border-y border-r border-y-bgBorder border-r-bgBorder rounded-r-md p-5 shadow-sm ${t.pnl >= 0 ? 'border-l-profit' : 'border-l-loss'}`}>
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <div className="flex gap-2 items-center">
-                      <span className="font-bold text-lg">{t.pair}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded bg-bgMain border border-bgBorder font-bold ${t.direction==='LONG'?'text-accent':'text-loss'}`}>{t.direction}</span>
+            {sorted.map(t => {
+              const cl = t.checklist || { sessionTiming: false, physicallyPresent: false, entryModel: false, validZone: false, confirmation: false };
+              const followedCount = Object.values(cl).filter(Boolean).length;
+              const compliancePct = (followedCount / 5) * 100;
+              
+              const barColor = followedCount === 5 ? 'bg-profit' : followedCount === 0 ? 'bg-loss' : 'bg-accent';
+              const textColor = followedCount === 5 ? 'text-profit' : followedCount === 0 ? 'text-loss' : 'text-accent';
+
+              const time12Obj = parse24To12(t.time || '12:00');
+
+              return (
+                <div key={t.id} className={`bg-bgPanel border-l-4 border-y border-r border-y-bgBorder border-r-bgBorder rounded-r-md p-5 shadow-sm ${t.pnl >= 0 ? 'border-l-profit' : 'border-l-loss'} flex flex-col`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="flex gap-2 items-center">
+                        <span className="font-bold text-lg">{t.pair}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded bg-bgMain border border-bgBorder font-bold ${t.direction==='LONG' || t.direction==='BUY' ? 'text-profit' : 'text-loss'}`}>{t.direction==='LONG' || t.direction==='BUY' ? '↑ BUY' : '↓ SELL'}</span>
+                      </div>
+                      <span className="text-xs text-textMuted font-mono">{formatDate(t.date)} • {format12Hour(time12Obj)} • {t.session}</span>
                     </div>
-                    <span className="text-xs text-textMuted font-mono">{formatDate(t.date)} • {t.time} • {t.session}</span>
+                    <div className="text-right">
+                      <div className={`font-mono text-xl font-bold ${t.pnl > 0 ? 'text-profit' : t.pnl < 0 ? 'text-loss' : 'text-textMain'}`}>{t.pnl > 0 ? '+' : ''}{formatMoney(t.pnl)}</div>
+                      <div className="text-xs text-textDark font-mono mt-1">
+                        {t.entry ? `Entry: ${t.entry}` : ''}
+                        {t.exit ? ` | Exit: ${t.exit}` : ''}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`font-mono text-xl font-bold ${t.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{t.pnl > 0 ? '+' : ''}{formatMoney(t.pnl)}</div>
-                    <div className="text-xs text-textDark font-mono mt-1">
-                      {t.entry ? `Entry: ${t.entry}` : ''}
-                      {t.exit ? ` | Exit: ${t.exit}` : ''}
+                  
+                  <div className="space-y-3 mt-4 text-sm text-textMuted flex-1">
+                    <div><strong className="text-textMain font-medium">Notes:</strong> {t.notes || 'No notes.'}</div>
+                    {t.mistakes?.length > 0 && (
+                      <div className="pt-2 flex flex-wrap gap-1.5">
+                        {t.mistakes.map(m => <span key={m} className="text-[10px] uppercase bg-[#2A1519] text-loss px-2 py-1 rounded border border-[#3A1C22]">{m}</span>)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-5 pt-4 border-t border-bgBorder">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-xs font-bold text-textMain uppercase tracking-wider">Pre-Trade Checklist</h4>
+                      <div className="text-right">
+                        <span className={`text-sm font-bold font-mono ${textColor}`}>{followedCount}/5 ({compliancePct}%)</span>
+                      </div>
                     </div>
+                    
+                    <div className="space-y-2 mb-4 bg-bgMain p-3 rounded border border-bgBorder">
+                      {CHECKLIST_RULES.map(rule => (
+                        <div key={rule.key} className="flex items-start gap-2 text-xs">
+                          <span className={cl[rule.key] ? 'text-profit font-bold' : 'text-loss opacity-80'}>
+                            {cl[rule.key] ? '☑' : '☒'}
+                          </span>
+                          <span className={cl[rule.key] ? 'text-textMuted' : 'text-textDark opacity-80 line-through'}>
+                            {rule.title}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {t.justification && (
+                      <div className="bg-[#11161D] p-3 rounded border border-bgBorder text-sm text-textMuted whitespace-pre-line">
+                        <strong className="text-accent text-[10px] uppercase tracking-widest block mb-1">Trade Justification:</strong>
+                        {t.justification}
+                      </div>
+                    )}
                   </div>
                 </div>
-                
-                <div className="space-y-3 mt-4 text-sm text-textMuted">
-                  <div><strong className="text-textMain font-medium">Setup:</strong> {t.setup}</div>
-                  <div><strong className="text-textMain font-medium">Notes:</strong> {t.notes || 'No notes.'}</div>
-                  {t.mistakes?.length > 0 && (
-                    <div className="pt-2 flex flex-wrap gap-1.5">
-                      {t.mistakes.map(m => <span key={m} className="text-[10px] uppercase bg-[#2A1519] text-loss px-2 py-1 rounded border border-[#3A1C22]">{m}</span>)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       );
     };
 
     // --- TRADES & FORM ---
-    const TradesView = ({ trades, setTrades }) => {
+    const TradesView = ({ trades, saveTrade, deleteTrade, sessionSettings }) => {
       const [showModal, setShowModal] = useState(false);
       const [editingId, setEditingId] = useState(null);
       
-      const defaultForm = { date: new Date().toISOString().split('T')[0], time: '12:00', pair: 'XAUUSD', direction: 'LONG', session: 'New York', setup: 'Breakout', pnl: 0, entry: '', exit: '', sl: '', tp: '', mistakes: [], notes: '' };
+      const defaultForm = { 
+        date: new Date().toISOString().split('T')[0], 
+        pair: 'XAUUSD', direction: 'BUY', session: 'New York', 
+        pnl: 0, entry: '', exit: '', sl: '', tp: '', lotSize: '', mistakes: [], notes: '',
+        checklist: { sessionTiming: false, physicallyPresent: false, entryModel: false, validZone: false, confirmation: false },
+        justification: ''
+      };
+      
       const [form, setForm] = useState(defaultForm);
+      const [time12, setTime12] = useState({ h: '12', m: '00', a: 'PM' });
+
+      // Automatically determine session based on custom configured timings
+      useEffect(() => {
+        const t24 = format12To24(time12);
+        if (sessionSettings?.configured) {
+          const [th, tm] = t24.split(':');
+          const tMin = parseInt(th, 10) * 60 + parseInt(tm, 10);
+          
+          const rAsia = { start: toMinutes(sessionSettings.sessions.Asia.start), end: toMinutes(sessionSettings.sessions.Asia.end), name: 'Asia' };
+          const rLondon = { start: toMinutes(sessionSettings.sessions.London.start), end: toMinutes(sessionSettings.sessions.London.end), name: 'London' };
+          const rNY = { start: toMinutes(sessionSettings.sessions.NewYork.start), end: toMinutes(sessionSettings.sessions.NewYork.end), name: 'New York' };
+
+          let matchedSession = 'New York'; // default fallback
+          for (const r of [rAsia, rLondon, rNY]) {
+            if (r.start < r.end) {
+               if (tMin >= r.start && tMin < r.end) matchedSession = r.name;
+            } else {
+               if (tMin >= r.start || tMin < r.end) matchedSession = r.name;
+            }
+          }
+          setForm(prev => ({...prev, session: matchedSession}));
+        }
+      }, [time12, sessionSettings]);
 
       const handleSave = (e) => {
         e.preventDefault();
         const pnlNum = parseFloat(form.pnl) || 0;
+        
+        const followedCount = Object.values(form.checklist).filter(Boolean).length;
+        
         const newTrade = { 
           ...form, 
-          id: editingId || Date.now().toString(), 
+          id: editingId || crypto.randomUUID(), 
+          time: format12To24(time12), // Safely store as 24-hour internally
           pnl: pnlNum, 
           entry: form.entry ? parseFloat(form.entry) : '',
           exit: form.exit ? parseFloat(form.exit) : '',
           sl: form.sl ? parseFloat(form.sl) : '',
           tp: form.tp ? parseFloat(form.tp) : '',
-          result: pnlNum > 0 ? 'WIN' : pnlNum < 0 ? 'LOSS' : 'BREAKEVEN' 
+          lotSize: form.lotSize ? parseFloat(form.lotSize) : '',
+          result: pnlNum > 0 ? 'WIN' : pnlNum < 0 ? 'LOSS' : 'BREAKEVEN',
+          rulesFollowed: followedCount,
+          rulesTotal: 5,
+          ruleCompliancePercent: (followedCount / 5) * 100
         };
-        if (editingId) setTrades(trades.map(t => t.id === editingId ? newTrade : t));
-        else setTrades([...trades, newTrade]);
-        setShowModal(false); setForm(defaultForm); setEditingId(null);
+
+        saveTrade(newTrade);
+        setShowModal(false); 
+        setForm(defaultForm); 
+        setEditingId(null);
       };
 
-      const handleDelete = (id) => { if(confirm('Delete trade?')) setTrades(trades.filter(t => t.id !== id)); };
-      const handleEdit = (t) => { setForm(t); setEditingId(t.id); setShowModal(true); };
+      const handleDelete = (id) => { if(confirm('Delete trade?')) deleteTrade(id); };
+      
+      const handleEdit = (t) => { 
+        let initDir = t.direction || 'BUY';
+        if(initDir === 'LONG') initDir = 'BUY';
+        if(initDir === 'SHORT') initDir = 'SELL';
+
+        setTime12(parse24To12(t.time || '12:00'));
+
+        setForm({
+          ...defaultForm, 
+          ...t,
+          direction: initDir,
+          checklist: t.checklist || { sessionTiming: false, physicallyPresent: false, entryModel: false, validZone: false, confirmation: false },
+          justification: t.justification || ''
+        }); 
+        setEditingId(t.id); 
+        setShowModal(true); 
+      };
       
       const toggleMistake = (m) => {
         setForm(prev => ({ ...prev, mistakes: prev.mistakes.includes(m) ? prev.mistakes.filter(x => x !== m) : [...prev.mistakes, m] }));
       };
 
+      const followedCount = Object.values(form.checklist).filter(Boolean).length;
+      const compliancePct = (followedCount / 5) * 100;
+      const barColor = followedCount === 5 ? 'bg-profit' : followedCount === 0 ? 'bg-loss' : 'bg-accent';
+      const textColor = followedCount === 5 ? 'text-profit' : followedCount === 0 ? 'text-loss' : 'text-accent';
+
       return (
         <div className="space-y-4 h-full flex flex-col">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">All Trades</h2>
-            <button onClick={() => { setForm(defaultForm); setEditingId(null); setShowModal(true); }} className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors">
+            <button onClick={() => { setForm(defaultForm); setTime12({h:'12', m:'00', a:'PM'}); setEditingId(null); setShowModal(true); }} className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors">
               <Icons.Plus /> Add Trade
             </button>
           </div>
@@ -431,26 +579,50 @@
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-[#11161D] text-textMuted text-xs uppercase font-medium sticky top-0">
                   <tr>
-                    <th className="px-4 py-3">Date</th><th className="px-4 py-3">Pair</th><th className="px-4 py-3">Dir</th>
-                    <th className="px-4 py-3">Setup</th><th className="px-4 py-3 text-right">Entry</th><th className="px-4 py-3 text-right">P&L</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Pair</th>
+                    <th className="px-4 py-3">Direction</th>
+                    <th className="px-4 py-3 text-right">Entry</th>
+                    <th className="px-4 py-3 text-right">Exit</th>
+                    <th className="px-4 py-3 text-right">Lot Size</th>
+                    <th className="px-4 py-3 text-center">Rules Followed</th>
+                    <th className="px-4 py-3 text-right">P/L</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-bgBorder text-textMain">
-                  {[...trades].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => (
-                    <tr key={t.id} className="hover:bg-bgBorder transition-colors">
-                      <td className="px-4 py-3 font-mono">{formatDate(t.date)}</td>
-                      <td className="px-4 py-3">{t.pair}</td>
-                      <td className={`px-4 py-3 text-xs font-bold ${t.direction==='LONG'?'text-accent':'text-loss'}`}>{t.direction}</td>
-                      <td className="px-4 py-3">{t.setup}</td>
-                      <td className="px-4 py-3 text-right font-mono">{t.entry || '-'}</td>
-                      <td className={`px-4 py-3 text-right font-mono font-bold ${t.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(t.pnl)}</td>
-                      <td className="px-4 py-3 flex justify-end gap-3 text-textMuted">
-                        <button onClick={() => handleEdit(t)} className="hover:text-accent">Edit</button>
-                        <button onClick={() => handleDelete(t.id)} className="hover:text-loss"><Icons.Trash /></button>
-                      </td>
-                    </tr>
-                  ))}
+                  {trades.length === 0 && (
+                     <tr><td colSpan="9" className="px-4 py-6 text-center text-textMuted">No trades found.</td></tr>
+                  )}
+                  {[...trades].sort((a,b) => new Date(b.date) - new Date(a.date)).map(t => {
+                    const isBuy = t.direction === 'LONG' || t.direction === 'BUY';
+                    const dirLabel = isBuy ? '↑ BUY' : '↓ SELL';
+                    const dirColor = isBuy ? 'text-profit' : 'text-loss';
+                    
+                    const ruleCount = t.rulesFollowed !== undefined ? t.rulesFollowed : (t.checklist ? Object.values(t.checklist).filter(Boolean).length : 0);
+                    const rulePct = t.ruleCompliancePercent !== undefined ? t.ruleCompliancePercent : ((ruleCount / 5) * 100);
+                    const ruleColor = ruleCount === 5 ? 'text-profit' : 'text-accent';
+
+                    return (
+                      <tr key={t.id} className="hover:bg-bgBorder transition-colors">
+                        <td className="px-4 py-3 font-mono text-textMuted">{formatDate(t.date)}</td>
+                        <td className="px-4 py-3 font-medium">{t.pair}</td>
+                        <td className={`px-4 py-3 text-xs font-bold ${dirColor}`}>{dirLabel}</td>
+                        <td className="px-4 py-3 text-right font-mono">{t.entry || '-'}</td>
+                        <td className="px-4 py-3 text-right font-mono">{t.exit || '-'}</td>
+                        <td className="px-4 py-3 text-right font-mono text-accent">{t.lotSize || '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <div className={`font-mono font-bold ${ruleColor}`}>{ruleCount} / 5</div>
+                          <div className={`text-[10px] ${ruleColor}`}>{rulePct}%</div>
+                        </td>
+                        <td className={`px-4 py-3 text-right font-mono font-bold ${t.pnl > 0 ? 'text-profit' : t.pnl < 0 ? 'text-loss' : 'text-textMain'}`}>{t.pnl > 0 ? '+' : ''}{formatMoney(t.pnl)}</td>
+                        <td className="px-4 py-3 flex justify-end gap-3 text-textMuted">
+                          <button onClick={() => handleEdit(t)} className="hover:text-accent transition-colors">Edit</button>
+                          <button onClick={() => handleDelete(t.id)} className="hover:text-accent transition-colors"><Icons.Trash /></button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -458,21 +630,28 @@
 
           {/* Modal */}
           {showModal && (
-            <div className="fixed inset-0 bg-black/80 z-50 flex justify-center items-center p-4">
-              <div className="bg-bgPanel w-full max-w-2xl border border-bgBorder rounded-md flex flex-col max-h-[90vh]">
-                <div className="p-4 border-b border-bgBorder flex justify-between items-center">
+            <div className="fixed inset-0 bg-black/80 z-50 flex justify-center items-start md:items-center p-0 md:p-4 overflow-y-auto">
+              <div className="bg-bgPanel w-full max-w-2xl border-x md:border border-bgBorder md:rounded-md flex flex-col min-h-screen md:min-h-0 md:max-h-[90vh]">
+                <div className="p-4 border-b border-bgBorder flex justify-between items-center sticky top-0 bg-bgPanel z-10">
                   <h3 className="font-bold text-textMain uppercase tracking-wider">{editingId ? 'Edit Trade' : 'New Trade'}</h3>
-                  <button onClick={() => setShowModal(false)} className="text-textMuted hover:text-textMain">✕</button>
+                  <button type="button" onClick={() => setShowModal(false)} className="text-textMuted hover:text-textMain text-xl leading-none">&times;</button>
                 </div>
-                <div className="p-6 overflow-y-auto flex-1">
+                
+                <div className="p-4 md:p-6 overflow-y-auto flex-1">
                   <form id="tradeForm" onSubmit={handleSave} className="space-y-6">
+                    
                     <div className="grid grid-cols-2 gap-4">
                       <div><label className="block text-xs text-textMuted mb-1">Date</label><input type="date" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.date} onChange={e=>setForm({...form, date:e.target.value})}/></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Time</label><input type="time" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.time} onChange={e=>setForm({...form, time:e.target.value})}/></div>
+                      <TimePicker label="Time" value={time12} onChange={setTime12} />
                       <div><label className="block text-xs text-textMuted mb-1">Pair</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.pair} onChange={e=>setForm({...form, pair:e.target.value})}>{PAIR_OPTS.map(p=><option key={p}>{p}</option>)}</select></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Direction</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.direction} onChange={e=>setForm({...form, direction:e.target.value})}><option>LONG</option><option>SHORT</option></select></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Setup</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.setup} onChange={e=>setForm({...form, setup:e.target.value})}>{SETUP_OPTS.map(p=><option key={p}>{p}</option>)}</select></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Session</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.session} onChange={e=>setForm({...form, session:e.target.value})}><option>Asian</option><option>London</option><option>New York</option></select></div>
+                      <div>
+                        <label className="block text-xs text-textMuted mb-1">Direction</label>
+                        <select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.direction} onChange={e=>setForm({...form, direction:e.target.value})}>
+                          <option value="BUY">BUY</option>
+                          <option value="SELL">SELL</option>
+                        </select>
+                      </div>
+                      <div><label className="block text-xs text-textMuted mb-1">Session</label><select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain" value={form.session} onChange={e=>setForm({...form, session:e.target.value})}><option>Asia</option><option>London</option><option>New York</option></select></div>
                     </div>
                     
                     <div className="border-t border-bgBorder pt-4 grid grid-cols-2 gap-4">
@@ -480,26 +659,83 @@
                       <div><label className="block text-xs text-textMuted mb-1">Exit Price</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.exit} onChange={e=>setForm({...form, exit:e.target.value})}/></div>
                       <div><label className="block text-xs text-textMuted mb-1">Stop Loss (SL)</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.sl} onChange={e=>setForm({...form, sl:e.target.value})}/></div>
                       <div><label className="block text-xs text-textMuted mb-1">Take Profit (TP)</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.tp} onChange={e=>setForm({...form, tp:e.target.value})}/></div>
-                    </div>
-
-                    <div className="border-t border-bgBorder pt-4">
+                      <div><label className="block text-xs text-textMuted mb-1">Lot Size</label><input type="number" step="any" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.lotSize} onChange={e=>setForm({...form, lotSize:e.target.value})}/></div>
                       <div><label className="block text-xs text-textMuted mb-1">P&L ($) *</label><input type="number" step="0.01" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.pnl} onChange={e=>setForm({...form, pnl:e.target.value})}/></div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs text-textMuted mb-2">Mistakes</label>
-                      <div className="flex flex-wrap gap-2">
-                        {MISTAKE_OPTS.map(m => (
-                          <button type="button" key={m} onClick={()=>toggleMistake(m)} className={`px-2 py-1 text-xs rounded border transition-colors ${form.mistakes.includes(m) ? 'bg-[#2A1519] border-loss text-loss' : 'bg-bgMain border-bgBorder text-textMuted hover:border-textDark'}`}>{m}</button>
+                    <div className="border-t border-bgBorder pt-6">
+                      <h3 className="text-sm font-bold text-textMain uppercase tracking-wider mb-4">Pre-Trade Checklist</h3>
+                      
+                      <div className="bg-[#11161D] p-4 rounded-md border border-bgBorder mb-4 shadow-sm">
+                        <div className="flex justify-between items-end mb-3">
+                          <div>
+                            <div className={`text-2xl font-bold font-mono ${textColor}`}>{followedCount} <span className="text-sm text-textDark">/ 5</span></div>
+                            <div className="text-[10px] text-textMuted uppercase font-bold tracking-widest mt-1">Rules Followed</div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-2xl font-bold font-mono ${textColor}`}>{compliancePct}%</div>
+                            {followedCount < 5 && <div className="text-loss text-[10px] uppercase font-bold mt-1">⚠ Rules Violated: {5 - followedCount}</div>}
+                            {followedCount === 5 && <div className="text-profit text-[10px] uppercase font-bold mt-1">100% Compliant</div>}
+                          </div>
+                        </div>
+                        <div className="h-2 w-full bg-bgMain rounded-full overflow-hidden border border-[#080A0D]">
+                          <div className={`h-full ${barColor} transition-all duration-300`} style={{width: `${compliancePct}%`}}></div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {CHECKLIST_RULES.map((rule) => (
+                          <label key={rule.key} className={`flex items-start gap-3 p-3 bg-bgMain border rounded cursor-pointer transition-colors select-none ${form.checklist[rule.key] ? 'border-accent/40 bg-accent/5' : 'border-bgBorder hover:border-textDark'}`}>
+                            <div className="pt-0.5">
+                              <input
+                                type="checkbox"
+                                style={{'--checkbox-color': followedCount === 4 && !form.checklist[rule.key] ? '#00FFB2' : '#00E5FF'}}
+                                checked={form.checklist[rule.key]}
+                                onChange={(e) => setForm({
+                                  ...form,
+                                  checklist: { ...form.checklist, [rule.key]: e.target.checked }
+                                })}
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <div className={`text-sm ${form.checklist[rule.key] ? 'text-textMain' : 'text-textMuted'}`}>{rule.title}</div>
+                              {rule.sub && <div className="text-[10px] text-textDark whitespace-pre-line mt-1 font-mono uppercase">{rule.sub}</div>}
+                            </div>
+                          </label>
                         ))}
                       </div>
                     </div>
-                    <div><label className="block text-xs text-textMuted mb-1">Notes / Lessons</label><textarea rows="3" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none resize-none" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})}></textarea></div>
+
+                    <div className="border-t border-bgBorder pt-6">
+                      <h3 className="text-sm font-bold text-textMain uppercase tracking-wider mb-2">Trade Justification</h3>
+                      <label className="block text-xs text-textMuted mb-2">Why am I taking this trade? (Optional)</label>
+                      <textarea 
+                        rows="3" 
+                        className="w-full bg-bgMain border border-bgBorder rounded p-3 text-sm text-textMain focus:border-accent outline-none resize-none" 
+                        value={form.justification} 
+                        onChange={e=>setForm({...form, justification:e.target.value})}
+                        placeholder="Market context, confluences, psychological state..."
+                      ></textarea>
+                    </div>
+
+                    <div className="border-t border-bgBorder pt-6">
+                      <h3 className="text-sm font-bold text-textMain uppercase tracking-wider mb-4">Post-Trade Review</h3>
+                      <label className="block text-xs text-textMuted mb-2">Mistakes</label>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {MISTAKE_OPTS.map(m => (
+                          <button type="button" key={m} onClick={()=>toggleMistake(m)} className={`px-3 py-1.5 text-xs rounded border transition-colors ${form.mistakes.includes(m) ? 'bg-[#2A1519] border-loss text-loss' : 'bg-bgMain border-bgBorder text-textMuted hover:border-textDark'}`}>{m}</button>
+                        ))}
+                      </div>
+                      <label className="block text-xs text-textMuted mb-1">Post-Trade Notes / Lessons</label>
+                      <textarea rows="3" className="w-full bg-bgMain border border-bgBorder rounded p-3 text-sm text-textMain focus:border-accent outline-none resize-none" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})}></textarea>
+                    </div>
+                    
                   </form>
                 </div>
-                <div className="p-4 border-t border-bgBorder flex justify-end gap-3 bg-[#11161D] rounded-b-md">
-                  <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-textMuted hover:text-textMain">Cancel</button>
-                  <button type="submit" form="tradeForm" className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold">Save Trade</button>
+                
+                <div className="p-4 border-t border-bgBorder flex justify-end gap-3 bg-[#11161D] md:rounded-b-md sticky bottom-0 z-10">
+                  <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-bold text-textMuted hover:text-textMain transition-colors">Cancel</button>
+                  <button type="submit" form="tradeForm" className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all">Save Trade</button>
                 </div>
               </div>
             </div>
@@ -511,7 +747,8 @@
     // --- CALENDAR ---
     const CalendarView = ({ trades }) => {
       const today = new Date();
-      const year = today.getFullYear(); const month = today.getMonth();
+      const year = today.getFullYear(); 
+      const month = today.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const firstDay = new Date(year, month, 1).getDay();
       
@@ -529,34 +766,124 @@
       return (
         <div className="space-y-4 h-full flex flex-col">
           <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain mb-2">August 2026 Calendar</h2>
-          <div className="grid grid-cols-7 gap-1 sm:gap-2 -mx-6 sm:mx-0">
-            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="text-center text-[10px] sm:text-xs font-medium text-textMuted uppercase py-2 bg-bgPanel rounded border border-bgBorder">{d}</div>)}
-          </div>
-          <div className="grid grid-cols-7 gap-1 sm:gap-2 -mx-6 sm:mx-0 auto-rows-[56px] sm:auto-rows-[78px]">
-            {calendarDays.map((d, i) => (
-              <div key={i} className={`relative min-w-0 rounded border p-1 sm:p-2 ${!d ? 'border-transparent' : 'bg-bgPanel border-bgBorder'}`}>
-                {d && (
-                  <>
-                    <span className="absolute top-1 right-1 sm:top-2 sm:right-2 text-[10px] sm:text-xs text-textMuted">{d.num}</span>
-                    {d.trades > 0 && (
-                      <div className="h-full flex items-center justify-center pt-3 sm:pt-4">
-                        <div className={`w-[82%] sm:w-[82%] h-[38px] sm:h-[46px] px-1 py-[3px] sm:p-1 rounded-md border bg-bgMain flex flex-col items-center justify-center text-center ${d.pnl >= 0 ? 'border-profit text-profit' : 'border-loss text-loss'}`}>
-                          <div className="max-w-full whitespace-nowrap text-[10px] sm:text-xs font-bold font-mono leading-none">{formatMoney(d.pnl)}</div>
-                          <div className="max-w-full whitespace-nowrap text-[9px] sm:text-[10px] text-textDark mt-1 leading-none">{d.trades} trade{d.trades>1?'s':''}</div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+          
+          <div className="grid grid-cols-7 gap-2 md:gap-4">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+              <div key={d} className="text-center text-[10px] md:text-xs font-medium text-textMuted uppercase py-2 bg-bgPanel rounded-md border border-bgBorder">
+                {d}
               </div>
             ))}
+          </div>
+          
+          <div className="grid grid-cols-7 gap-2 md:gap-4 flex-1 pb-4">
+            {calendarDays.map((d, i) => {
+              let cardStyle = "border-transparent bg-transparent";
+              let pnlColor = "text-textMain";
+              let tradeTextColor = "text-textDark";
+
+              if (d) {
+                if (d.trades === 0) {
+                  cardStyle = "bg-bgPanel border-bgBorder";
+                } else if (d.pnl > 0) {
+                  cardStyle = "bg-[#00FFB2]/10 border-[#00FFB2]/60";
+                  pnlColor = "text-profit";
+                  tradeTextColor = "text-profit/80";
+                } else if (d.pnl < 0) {
+                  cardStyle = "bg-[#FF4D67]/10 border-[#FF4D67]/60";
+                  pnlColor = "text-loss";
+                  tradeTextColor = "text-loss/80";
+                } else {
+                  cardStyle = "bg-bgPanel border-bgBorder";
+                }
+              }
+
+              return (
+                <div key={i} className={`rounded-lg border p-1.5 md:p-3 flex flex-col min-h-[70px] sm:min-h-[85px] md:min-h-[110px] transition-colors ${cardStyle}`}>
+                  {d && (
+                    <>
+                      <div className="flex justify-start">
+                        <span className={`text-[10px] md:text-xs font-medium ${d.trades > 0 && d.pnl !== 0 ? 'text-textMain' : 'text-textMuted'}`}>
+                          {d.num}
+                        </span>
+                      </div>
+                      
+                      {d.trades > 0 && (
+                        <div className="mt-auto text-center pb-0.5 md:pb-1 overflow-hidden">
+                          <div className={`text-[10px] sm:text-xs md:text-base font-bold font-mono truncate ${pnlColor}`}>
+                            {d.pnl > 0 ? '+' : ''}{formatMoney(d.pnl)}
+                          </div>
+                          <div className={`text-[8px] md:text-[10px] mt-0.5 md:mt-1 truncate ${tradeTextColor}`}>
+                            {d.trades} trade{d.trades !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       );
     };
 
-    // --- ANALYTICS / SETUPS / MISTAKES ---
-    const AnalyticsView = ({ trades }) => {
+    // --- ANALYTICS MODULE ---
+    const AnalyticsView = ({ trades, sessionSettings, updateSettings }) => {
+      
+      const [showSessionModal, setShowSessionModal] = useState(false);
+      const [sessError, setSessError] = useState('');
+      const [tempSess, setTempSess] = useState(sessionSettings.sessions || {
+        Asia: { start: { h: '7', m: '00', a: 'AM' }, end: { h: '11', m: '30', a: 'AM' } },
+        London: { start: { h: '1', m: '00', a: 'PM' }, end: { h: '4', m: '30', a: 'PM' } },
+        NewYork: { start: { h: '5', m: '30', a: 'PM' }, end: { h: '8', m: '30', a: 'PM' } }
+      });
+
+      // 1. Day of Week Analysis
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayStats = dayNames.map(name => ({
+        name, trades: 0, wins: 0, losses: 0, totalPnl: 0, maxPnl: -Infinity, minPnl: Infinity, rSum: 0, rCount: 0
+      }));
+
+      trades.forEach(t => {
+        const [y, m, d] = t.date.split('-');
+        const dateObj = new Date(y, m - 1, d);
+        const dayIdx = dateObj.getDay();
+        const stat = dayStats[dayIdx];
+
+        stat.trades++;
+        if (t.pnl > 0) stat.wins++;
+        if (t.pnl < 0) stat.losses++;
+        stat.totalPnl += t.pnl;
+        if (t.pnl > stat.maxPnl) stat.maxPnl = t.pnl;
+        if (t.pnl < stat.minPnl) stat.minPnl = t.pnl;
+
+        if (t.r !== undefined && t.r !== null && t.r !== '') {
+          stat.rSum += parseFloat(t.r);
+          stat.rCount++;
+        }
+      });
+
+      const processedDays = dayStats.map(stat => {
+        const winRate = stat.trades > 0 ? ((stat.wins / stat.trades) * 100) : 0;
+        const avgPnl = stat.trades > 0 ? (stat.totalPnl / stat.trades) : 0;
+        const avgR = stat.rCount > 0 ? (stat.rSum / stat.rCount) : null;
+        return { ...stat, winRate, avgPnl, avgR };
+      });
+
+      const displayDays = processedDays.slice(1, 6);
+
+      const activeDays = displayDays.filter(d => d.trades > 0);
+      let bestDay = null;
+      let worstDay = null;
+      if (activeDays.length > 0) {
+        bestDay = [...activeDays].sort((a,b) => b.totalPnl - a.totalPnl)[0];
+        worstDay = [...activeDays].sort((a,b) => a.totalPnl - b.totalPnl)[0];
+      }
+
+      const maxAbsPnl = Math.max(...displayDays.map(d => Math.abs(d.totalPnl)));
+      const getStatColor = (val) => val > 0 ? 'text-profit' : val < 0 ? 'text-loss' : 'text-textMain';
+
+      // 2. Pair Stats
       const byPair = PAIR_OPTS.map(p => {
         const pTrades = trades.filter(t => t.pair === p);
         const pnl = pTrades.reduce((s, t) => s + t.pnl, 0);
@@ -565,133 +892,745 @@
         return { name: p, count: pTrades.length, pnl, wr };
       }).filter(x => x.count > 0).sort((a,b) => b.pnl - a.pnl);
 
-      const weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const getWeekday = (trade) => new Date(`${trade.date}T00:00:00`).getDay();
-      const weekdaysToShow = weekdayNames.map((name, index) => ({ name, index })).filter(day =>
-        (day.index >= 1 && day.index <= 5) || trades.some(trade => getWeekday(trade) === day.index)
-      );
-      const weekdayData = weekdaysToShow.map(day => {
-        const dayTrades = trades.filter(trade => getWeekday(trade) === day.index);
-        const pnl = dayTrades.reduce((sum, trade) => sum + trade.pnl, 0);
-        const wins = dayTrades.filter(trade => trade.pnl > 0).length;
-        const losses = dayTrades.filter(trade => trade.pnl < 0).length;
-        const bestTrade = dayTrades.length ? Math.max(...dayTrades.map(trade => trade.pnl)) : null;
-        const worstTrade = dayTrades.length ? Math.min(...dayTrades.map(trade => trade.pnl)) : null;
-        return {
-          ...day,
-          count: dayTrades.length,
-          wins,
-          losses,
-          winRate: dayTrades.length ? ((wins / dayTrades.length) * 100).toFixed(0) : 0,
-          pnl,
-          avgPnl: dayTrades.length ? pnl / dayTrades.length : null,
-          bestTrade,
-          worstTrade
-        };
+      // 3. Custom Session Performance Logic
+      let sAsia = { id: 'Asia', name: 'Asia Session', trades: 0, wins: 0, losses: 0, pnl: 0, maxPnl: -Infinity, minPnl: Infinity, grossWin: 0, grossLoss: 0, color: '#00E5FF' };
+      let sLondon = { id: 'London', name: 'London Session', trades: 0, wins: 0, losses: 0, pnl: 0, maxPnl: -Infinity, minPnl: Infinity, grossWin: 0, grossLoss: 0, color: '#3B82F6' };
+      let sNewYork = { id: 'NewYork', name: 'New York Session', trades: 0, wins: 0, losses: 0, pnl: 0, maxPnl: -Infinity, minPnl: Infinity, grossWin: 0, grossLoss: 0, color: '#6366F1' };
+
+      const ranges = [];
+      if (sessionSettings.configured) {
+         sAsia.timeStr = format12Hour(sessionSettings.sessions.Asia.start) + ' – ' + format12Hour(sessionSettings.sessions.Asia.end);
+         sLondon.timeStr = format12Hour(sessionSettings.sessions.London.start) + ' – ' + format12Hour(sessionSettings.sessions.London.end);
+         sNewYork.timeStr = format12Hour(sessionSettings.sessions.NewYork.start) + ' – ' + format12Hour(sessionSettings.sessions.NewYork.end);
+
+         ranges.push({ ref: sAsia, start: toMinutes(sessionSettings.sessions.Asia.start), end: toMinutes(sessionSettings.sessions.Asia.end) });
+         ranges.push({ ref: sLondon, start: toMinutes(sessionSettings.sessions.London.start), end: toMinutes(sessionSettings.sessions.London.end) });
+         ranges.push({ ref: sNewYork, start: toMinutes(sessionSettings.sessions.NewYork.start), end: toMinutes(sessionSettings.sessions.NewYork.end) });
+      }
+
+      if (sessionSettings.configured) {
+        trades.forEach(t => {
+          if(!t.time) return;
+          const [th, tm] = t.time.split(':');
+          const tMin = parseInt(th, 10) * 60 + parseInt(tm, 10);
+
+          let matchedSession = null;
+          for (const r of ranges) {
+             if (r.start < r.end) {
+                if (tMin >= r.start && tMin < r.end) matchedSession = r.ref;
+             } else {
+                if (tMin >= r.start || tMin < r.end) matchedSession = r.ref;
+             }
+          }
+
+          if (matchedSession) {
+            matchedSession.trades++;
+            matchedSession.pnl += t.pnl;
+            if (t.pnl > 0) { matchedSession.wins++; matchedSession.grossWin += t.pnl; }
+            if (t.pnl < 0) { matchedSession.losses++; matchedSession.grossLoss += Math.abs(t.pnl); }
+            if (t.pnl > matchedSession.maxPnl) matchedSession.maxPnl = t.pnl;
+            if (t.pnl < matchedSession.minPnl) matchedSession.minPnl = t.pnl;
+          }
+        });
+      }
+
+      const sessionStatsList = [sAsia, sLondon, sNewYork];
+      let totalSessTrades = 0, totalSessPnl = 0, totalSessGrossWin = 0, totalSessGrossLoss = 0, totalSessWins = 0;
+      let totalSessMax = -Infinity, totalSessMin = Infinity;
+
+      sessionStatsList.forEach(s => {
+        s.winRate = s.trades > 0 ? (s.wins / s.trades) * 100 : 0;
+        s.avgPnl = s.trades > 0 ? (s.pnl / s.trades) : 0;
+        s.pf = s.grossLoss > 0 ? (s.grossWin / s.grossLoss).toFixed(2) : (s.grossWin > 0 ? 'N/A' : '0.00');
+
+        if(s.trades > 0) {
+           totalSessTrades += s.trades;
+           totalSessPnl += s.pnl;
+           totalSessWins += s.wins;
+           totalSessGrossWin += s.grossWin;
+           totalSessGrossLoss += s.grossLoss;
+           if (s.maxPnl > totalSessMax) totalSessMax = s.maxPnl;
+           if (s.minPnl < totalSessMin) totalSessMin = s.minPnl;
+        }
       });
-      const activeWeekdays = weekdayData.filter(day => day.count > 0);
-      const bestWeekday = activeWeekdays.length ? activeWeekdays.reduce((best, day) => day.pnl > best.pnl ? day : best) : null;
-      const worstWeekday = activeWeekdays.length ? activeWeekdays.reduce((worst, day) => day.pnl < worst.pnl ? day : worst) : null;
-      const maxWeekdayPnl = Math.max(...activeWeekdays.map(day => Math.abs(day.pnl)), 0);
-      const pnlClass = (value) => value > 0 ? 'text-profit' : value < 0 ? 'text-loss' : 'text-textMuted';
+
+      const totalSessWinRate = totalSessTrades > 0 ? (totalSessWins / totalSessTrades) * 100 : 0;
+      const totalSessAvgPnl = totalSessTrades > 0 ? totalSessPnl / totalSessTrades : 0;
+      const totalSessPf = totalSessGrossLoss > 0 ? (totalSessGrossWin / totalSessGrossLoss).toFixed(2) : (totalSessGrossWin > 0 ? 'N/A' : '0.00');
+
+      const activeSess = sessionStatsList.filter(s => s.trades > 0);
+      const bestPnlSession = activeSess.length > 0 ? [...activeSess].sort((a,b) => b.pnl - a.pnl)[0] : null;
+      const bestWrSession = activeSess.length > 0 ? [...activeSess].sort((a,b) => b.winRate - a.winRate)[0] : null;
+      const mostActiveSession = activeSess.length > 0 ? [...activeSess].sort((a,b) => b.trades - a.trades)[0] : null;
+
+      const rSessDonut = 64;
+      const cSessDonut = 2 * Math.PI * rSessDonut;
+      let cumPercent = 0;
+
+      const handleSaveSessions = () => {
+         const intervals = [
+            { start: toMinutes(tempSess.Asia.start), end: toMinutes(tempSess.Asia.end) },
+            { start: toMinutes(tempSess.London.start), end: toMinutes(tempSess.London.end) },
+            { start: toMinutes(tempSess.NewYork.start), end: toMinutes(tempSess.NewYork.end) }
+         ];
+         for (const i of intervals) {
+           if (i.start === i.end) { setSessError("Start and end times cannot be the same."); return; }
+         }
+         if (checkOverlap(intervals)) { setSessError("Session times cannot overlap."); return; }
+
+         updateSettings({ session_settings: { configured: true, sessions: tempSess } });
+         setShowSessionModal(false);
+         setSessError('');
+      };
 
       return (
-        <div className="space-y-6">
-          <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">Analytics & Performance</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden">
-              <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Performance by Pair</div>
-              <table className="w-full text-left text-sm">
-                <thead className="bg-[#11161D] text-textMuted text-xs uppercase"><tr><th className="px-4 py-2">Pair</th><th className="px-4 py-2">Trades</th><th className="px-4 py-2">Win %</th><th className="px-4 py-2 text-right">P&L</th></tr></thead>
-                <tbody className="divide-y divide-bgBorder text-textMain">
-                  {byPair.map(p => (
-                    <tr key={p.name}>
-                      <td className="px-4 py-3 font-medium">{p.name}</td><td className="px-4 py-3">{p.count}</td>
-                      <td className="px-4 py-3">{p.wr}%</td><td className={`px-4 py-3 text-right font-mono ${p.pnl>=0?'text-profit':'text-loss'}`}>{formatMoney(p.pnl)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="space-y-8">
+          
+          {/* 1. DAY OF WEEK ANALYSIS */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">DAY-OF-WEEK ANALYSIS</h2>
+              <p className="text-textDark text-xs mt-1">Performance grouped by each trade date</p>
             </div>
-            
-            <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden">
-              <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Mistake Tracker (Impact)</div>
-              <table className="w-full text-left text-sm">
-                <thead className="bg-[#11161D] text-textMuted text-xs uppercase"><tr><th className="px-4 py-2">Mistake</th><th className="px-4 py-2">Count</th><th className="px-4 py-2 text-right">Cost</th></tr></thead>
-                <tbody className="divide-y divide-bgBorder text-textMain">
-                  {MISTAKE_OPTS.map(m => {
-                    const mTrades = trades.filter(t => t.mistakes?.includes(m));
-                    const cost = mTrades.reduce((s, t) => s + t.pnl, 0);
-                    return { name: m, count: mTrades.length, cost };
-                  }).filter(x => x.count > 0).sort((a,b) => a.cost - b.cost).map(m => (
-                    <tr key={m.name}>
-                      <td className="px-4 py-3 text-loss">{m.name}</td><td className="px-4 py-3">{m.count}</td>
-                      <td className="px-4 py-3 text-right font-mono text-loss">{formatMoney(m.cost)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
 
-          <section className="space-y-4">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold uppercase tracking-wider text-textMain">Day-of-Week Analysis</h3>
-                <p className="text-textDark text-xs mt-1">Performance grouped by each trade date</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col shadow-sm">
+                <span className="text-textMuted text-xs font-medium uppercase tracking-wider mb-2">Best Day</span>
+                <span className="text-base font-bold text-textMain">{bestDay ? bestDay.name : 'No Data'}</span>
+                <span className={`text-2xl font-mono font-bold mt-1 ${bestDay ? getStatColor(bestDay.totalPnl) : 'text-textDark'}`}>
+                  {bestDay ? formatMoney(bestDay.totalPnl) : 'No Data'}
+                </span>
+                <span className="text-textMuted text-xs mt-2">
+                  Average R: {bestDay && bestDay.avgR !== null ? bestDay.avgR.toFixed(2) : 'No Data'}
+                </span>
+              </div>
+
+              <div className="bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col shadow-sm">
+                <span className="text-textMuted text-xs font-medium uppercase tracking-wider mb-2">Worst Day</span>
+                <span className="text-base font-bold text-textMain">{worstDay ? worstDay.name : 'No Data'}</span>
+                <span className={`text-2xl font-mono font-bold mt-1 ${worstDay ? getStatColor(worstDay.totalPnl) : 'text-textDark'}`}>
+                  {worstDay ? formatMoney(worstDay.totalPnl) : 'No Data'}
+                </span>
+                <span className="text-textMuted text-xs mt-2">
+                  Average R: {worstDay && worstDay.avgR !== null ? worstDay.avgR.toFixed(2) : 'No Data'}
+                </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-bgPanel border border-bgBorder rounded-md p-4">
-                <span className="text-textMuted text-xs font-medium uppercase tracking-wider">Best Day</span>
-                {bestWeekday ? <><div className="text-textMain font-semibold mt-2">{bestWeekday.name}</div><div className={`font-mono font-bold mt-1 ${pnlClass(bestWeekday.pnl)}`}>{formatMoney(bestWeekday.pnl)}</div><div className="text-textDark text-xs mt-1">Average R: No Data</div></> : <div className="text-textDark text-sm mt-2">No Data</div>}
-              </div>
-              <div className="bg-bgPanel border border-bgBorder rounded-md p-4">
-                <span className="text-textMuted text-xs font-medium uppercase tracking-wider">Worst Day</span>
-                {worstWeekday ? <><div className="text-textMain font-semibold mt-2">{worstWeekday.name}</div><div className={`font-mono font-bold mt-1 ${pnlClass(worstWeekday.pnl)}`}>{formatMoney(worstWeekday.pnl)}</div><div className="text-textDark text-xs mt-1">Average R: No Data</div></> : <div className="text-textDark text-sm mt-2">No Data</div>}
-              </div>
-            </div>
+            <div className="space-y-4">
+              {displayDays.map(d => {
+                const barWidth = maxAbsPnl > 0 && d.trades > 0 ? (Math.abs(d.totalPnl) / maxAbsPnl) * 100 : 0;
+                const barColor = d.trades === 0 ? 'bg-transparent' : (d.totalPnl >= 0 ? 'bg-profit' : 'bg-loss');
 
-            <div className="space-y-3">
-              {weekdayData.map(day => {
-                const barWidth = maxWeekdayPnl > 0 ? (Math.abs(day.pnl) / maxWeekdayPnl) * 100 : 0;
                 return (
-                  <div key={day.name} className="bg-bgPanel border border-bgBorder rounded-md p-4">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <h4 className="text-textMain font-medium">{day.name}</h4>
-                      <span className={`font-mono font-bold text-sm ${pnlClass(day.pnl)}`}>{day.count ? formatMoney(day.pnl) : 'No Data'}</span>
+                  <div key={d.name} className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden flex flex-col shadow-sm">
+                    <div className="p-4 md:p-5">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-base font-bold text-textMain">{d.name}</h3>
+                        <span className={`text-base font-mono font-bold ${d.trades > 0 ? getStatColor(d.totalPnl) : 'text-textMuted'}`}>
+                          {d.trades > 0 ? formatMoney(d.totalPnl) : 'No Data'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-4 text-left">
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Trades</p>
+                          <p className={`font-mono font-bold text-sm ${d.trades > 0 ? 'text-textMain' : 'text-textDark'}`}>{d.trades}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Wins</p>
+                          <p className={`font-mono font-bold text-sm ${d.wins > 0 ? 'text-profit' : 'text-textDark'}`}>{d.wins}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Losses</p>
+                          <p className={`font-mono font-bold text-sm ${d.losses > 0 ? 'text-loss' : 'text-textDark'}`}>{d.losses}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Win Rate</p>
+                          <p className={`font-mono font-bold text-sm ${d.trades > 0 ? 'text-textMain' : 'text-textDark'}`}>{d.trades > 0 ? `${d.winRate.toFixed(0)}%` : '0%'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Avg P&L</p>
+                          <p className={`font-mono font-bold text-sm ${d.trades > 0 ? getStatColor(d.avgPnl) : 'text-textDark'}`}>{d.trades > 0 ? formatMoney(d.avgPnl) : 'No Data'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Avg R</p>
+                          <p className={`font-mono font-bold text-sm ${d.avgR !== null ? 'text-textMain' : 'text-textDark'}`}>{d.avgR !== null ? d.avgR.toFixed(2) : 'No Data'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Best Trade</p>
+                          <p className={`font-mono font-bold text-sm ${d.trades > 0 ? getStatColor(d.maxPnl) : 'text-textDark'}`}>{d.trades > 0 ? formatMoney(d.maxPnl) : 'No Data'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Worst Trade</p>
+                          <p className={`font-mono font-bold text-sm ${d.trades > 0 ? getStatColor(d.minPnl) : 'text-textDark'}`}>{d.trades > 0 ? formatMoney(d.minPnl) : 'No Data'}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-3 mt-4 text-xs">
-                      <div><span className="block text-textDark uppercase">Trades</span><span className="text-textMain font-mono">{day.count}</span></div>
-                      <div><span className="block text-textDark uppercase">Wins</span><span className="text-profit font-mono">{day.wins}</span></div>
-                      <div><span className="block text-textDark uppercase">Losses</span><span className="text-loss font-mono">{day.losses}</span></div>
-                      <div><span className="block text-textDark uppercase">Win Rate</span><span className="text-textMain font-mono">{day.winRate}%</span></div>
-                      <div><span className="block text-textDark uppercase">Avg P&amp;L</span><span className={`font-mono ${day.avgPnl === null ? 'text-textMuted' : pnlClass(day.avgPnl)}`}>{day.avgPnl === null ? 'No Data' : formatMoney(day.avgPnl)}</span></div>
-                      <div><span className="block text-textDark uppercase">Avg R</span><span className="text-textMuted font-mono">No Data</span></div>
-                      <div><span className="block text-textDark uppercase">Best Trade</span><span className={`font-mono ${day.bestTrade === null ? 'text-textMuted' : pnlClass(day.bestTrade)}`}>{day.bestTrade === null ? 'No Data' : formatMoney(day.bestTrade)}</span></div>
-                      <div><span className="block text-textDark uppercase">Worst Trade</span><span className={`font-mono ${day.worstTrade === null ? 'text-textMuted' : pnlClass(day.worstTrade)}`}>{day.worstTrade === null ? 'No Data' : formatMoney(day.worstTrade)}</span></div>
-                    </div>
-                    <div className="mt-4 h-1.5 bg-bgMain rounded overflow-hidden">
-                      <div className={`h-full ${day.pnl > 0 ? 'bg-profit' : day.pnl < 0 ? 'bg-loss' : 'bg-textDark'}`} style={{ width: `${barWidth}%` }} />
+
+                    <div className="h-1 w-full bg-bgMain">
+                      <div className={`h-full ${barColor}`} style={{ width: `${barWidth}%` }}></div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </section>
+          </div>
+
+          <div className="w-full border-t border-bgBorder"></div>
+
+          {/* 2. PAIR STATS & MISTAKES */}
+          {trades.length === 0 ? (
+             <div className="text-textMuted p-6 border border-bgBorder rounded bg-bgPanel">Need more data to display pair analytics.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Performance by Pair</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-[#11161D] text-textMuted text-xs uppercase"><tr><th className="px-4 py-2">Pair</th><th className="px-4 py-2">Trades</th><th className="px-4 py-2">Win %</th><th className="px-4 py-2 text-right">P&L</th></tr></thead>
+                    <tbody className="divide-y divide-bgBorder text-textMain">
+                      {byPair.map(p => (
+                        <tr key={p.name}>
+                          <td className="px-4 py-3 font-medium">{p.name}</td><td className="px-4 py-3">{p.count}</td>
+                          <td className="px-4 py-3">{p.wr}%</td><td className={`px-4 py-3 text-right font-mono ${p.pnl>=0?'text-profit':'text-loss'}`}>{formatMoney(p.pnl)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              <div className="bg-bgPanel border border-bgBorder rounded-md overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Mistake Tracker (Impact)</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-[#11161D] text-textMuted text-xs uppercase"><tr><th className="px-4 py-2">Mistake</th><th className="px-4 py-2">Count</th><th className="px-4 py-2 text-right">Cost</th></tr></thead>
+                    <tbody className="divide-y divide-bgBorder text-textMain">
+                      {MISTAKE_OPTS.map(m => {
+                        const mTrades = trades.filter(t => t.mistakes?.includes(m));
+                        const cost = mTrades.reduce((s, t) => s + t.pnl, 0);
+                        return { name: m, count: mTrades.length, cost };
+                      }).filter(x => x.count > 0).sort((a,b) => a.cost - b.cost).map(m => (
+                        <tr key={m.name}>
+                          <td className="px-4 py-3 text-loss">{m.name}</td><td className="px-4 py-3">{m.count}</td>
+                          <td className="px-4 py-3 text-right font-mono text-loss">{formatMoney(m.cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="w-full border-t border-bgBorder"></div>
+
+          {/* 3. SESSION PERFORMANCE */}
+          <div className="space-y-4 pb-8">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">SESSION PERFORMANCE</h2>
+                <p className="text-textDark text-xs mt-1">Analyze your performance across different trading sessions</p>
+              </div>
+              <button onClick={() => { setSessError(''); setTempSess(sessionSettings.sessions || tempSess); setShowSessionModal(true); }} className="bg-bgMain border border-bgBorder hover:border-accent text-accent px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors shrink-0">
+                ⚙ Session Times
+              </button>
+            </div>
+
+            {!sessionSettings.configured ? (
+              <div className="text-center p-12 bg-bgPanel border border-bgBorder rounded-md text-textMuted mt-4 shadow-sm">
+                Set your session times to begin tracking session performance.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {sessionStatsList.map(s => {
+                    const circDonut = 2 * Math.PI * 36;
+                    const offsetDonut = circDonut - (s.winRate / 100) * circDonut;
+                    return (
+                      <div key={s.id} className="bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col shadow-sm">
+                        <div className="flex justify-between items-center mb-5 border-b border-bgBorder pb-3">
+                          <h3 className="font-bold text-textMain uppercase tracking-wider text-sm">{s.name}</h3>
+                          <span className="text-[10px] font-mono font-bold text-textMuted bg-[#11161D] px-2 py-1 rounded">{s.timeStr}</span>
+                        </div>
+                        <div className="flex flex-col xl:flex-row items-center gap-6">
+                          <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
+                            <svg className="w-full h-full transform -rotate-90">
+                              <circle cx="48" cy="48" r="36" stroke="#11161D" strokeWidth="6" fill="none" />
+                              <circle cx="48" cy="48" r="36" stroke="#00E5FF" strokeWidth="6" fill="none" strokeDasharray={circDonut} strokeDashoffset={s.trades > 0 ? offsetDonut : circDonut} className="transition-all duration-500" strokeLinecap="round" />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                              <span className="text-[9px] text-textMuted uppercase mb-0.5">Win Rate</span>
+                              <span className="text-sm font-bold font-mono text-textMain">{s.trades > 0 ? `${s.winRate.toFixed(0)}%` : '0%'}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-3 w-full">
+                            <div>
+                              <p className="text-[9px] text-textMuted uppercase tracking-widest mb-1">Trades</p>
+                              <p className={`font-mono font-bold text-sm ${s.trades > 0 ? 'text-textMain' : 'text-textDark'}`}>{s.trades}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-textMuted uppercase tracking-widest mb-1">P&L</p>
+                              <p className={`font-mono font-bold text-sm ${s.trades > 0 ? getStatColor(s.pnl) : 'text-textDark'}`}>{s.trades > 0 ? (s.pnl > 0 ? '+' : '') + formatMoney(s.pnl) : 'No Data'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-textMuted uppercase tracking-widest mb-1">Avg P&L</p>
+                              <p className={`font-mono font-bold text-sm ${s.trades > 0 ? getStatColor(s.avgPnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.avgPnl) : 'No Data'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-textMuted uppercase tracking-widest mb-1">Profit Factor</p>
+                              <p className={`font-mono font-bold text-sm ${s.trades > 0 ? 'text-accent' : 'text-textDark'}`}>{s.trades > 0 ? s.pf : 'No Data'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-textMuted uppercase tracking-widest mb-1">Best Trade</p>
+                              <p className={`font-mono font-bold text-sm ${s.trades > 0 ? getStatColor(s.maxPnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.maxPnl) : 'No Data'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-textMuted uppercase tracking-widest mb-1">Worst Trade</p>
+                              <p className={`font-mono font-bold text-sm ${s.trades > 0 ? getStatColor(s.minPnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.minPnl) : 'No Data'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                  <div className="xl:col-span-2 bg-bgPanel border border-bgBorder rounded-md overflow-hidden flex flex-col shadow-sm">
+                    <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Performance by Session</div>
+                    <div className="overflow-x-auto flex-1">
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-[#11161D] text-textMuted text-xs uppercase">
+                          <tr>
+                            <th className="px-4 py-3">Session</th>
+                            <th className="px-4 py-3">Trades</th>
+                            <th className="px-4 py-3">Win %</th>
+                            <th className="px-4 py-3 text-right">P&L</th>
+                            <th className="px-4 py-3 text-right">Avg P&L</th>
+                            <th className="px-4 py-3 text-right">Best Trade</th>
+                            <th className="px-4 py-3 text-right">Worst Trade</th>
+                            <th className="px-4 py-3 text-right">Profit Factor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-bgBorder text-textMain">
+                          {sessionStatsList.map(s => (
+                            <tr key={s.id} className="hover:bg-bgBorder transition-colors">
+                              <td className="px-4 py-4">
+                                <div className="font-medium text-textMain">{s.name.replace(' Session', '')}</div>
+                                <div className="text-[10px] text-textMuted font-mono mt-0.5">{s.timeStr}</div>
+                              </td>
+                              <td className="px-4 py-4">{s.trades}</td>
+                              <td className="px-4 py-4">{s.trades > 0 ? `${s.winRate.toFixed(0)}%` : '0%'}</td>
+                              <td className={`px-4 py-4 text-right font-mono font-bold ${s.trades > 0 ? getStatColor(s.pnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.pnl) : 'No Data'}</td>
+                              <td className={`px-4 py-4 text-right font-mono ${s.trades > 0 ? getStatColor(s.avgPnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.avgPnl) : 'No Data'}</td>
+                              <td className={`px-4 py-4 text-right font-mono ${s.trades > 0 ? getStatColor(s.maxPnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.maxPnl) : 'No Data'}</td>
+                              <td className={`px-4 py-4 text-right font-mono ${s.trades > 0 ? getStatColor(s.minPnl) : 'text-textDark'}`}>{s.trades > 0 ? formatMoney(s.minPnl) : 'No Data'}</td>
+                              <td className={`px-4 py-4 text-right font-mono ${s.trades > 0 ? 'text-accent' : 'text-textDark'}`}>{s.trades > 0 ? s.pf : 'No Data'}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-[#11161D] font-bold">
+                            <td className="px-4 py-4 text-textMain">TOTAL</td>
+                            <td className="px-4 py-4">{totalSessTrades}</td>
+                            <td className="px-4 py-4">{totalSessTrades > 0 ? `${totalSessWinRate.toFixed(0)}%` : '0%'}</td>
+                            <td className={`px-4 py-4 text-right font-mono ${totalSessTrades > 0 ? getStatColor(totalSessPnl) : 'text-textDark'}`}>{totalSessTrades > 0 ? formatMoney(totalSessPnl) : 'No Data'}</td>
+                            <td className={`px-4 py-4 text-right font-mono ${totalSessTrades > 0 ? getStatColor(totalSessAvgPnl) : 'text-textDark'}`}>{totalSessTrades > 0 ? formatMoney(totalSessAvgPnl) : 'No Data'}</td>
+                            <td className={`px-4 py-4 text-right font-mono ${totalSessTrades > 0 ? getStatColor(totalSessMax) : 'text-textDark'}`}>{totalSessTrades > 0 ? formatMoney(totalSessMax) : 'No Data'}</td>
+                            <td className={`px-4 py-4 text-right font-mono ${totalSessTrades > 0 ? getStatColor(totalSessMin) : 'text-textDark'}`}>{totalSessTrades > 0 ? formatMoney(totalSessMin) : 'No Data'}</td>
+                            <td className={`px-4 py-4 text-right font-mono ${totalSessTrades > 0 ? 'text-accent' : 'text-textDark'}`}>{totalSessTrades > 0 ? totalSessPf : 'No Data'}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="bg-bgPanel border border-bgBorder rounded-md flex flex-col shadow-sm">
+                    <div className="p-4 border-b border-bgBorder text-sm font-medium uppercase text-textMain">Session Distribution</div>
+                    <div className="p-6 flex flex-col items-center justify-center flex-1">
+                      
+                      <div className="relative w-40 h-40 shrink-0 flex items-center justify-center mb-8">
+                        {totalSessTrades === 0 ? (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-full border-[12px] border-[#11161D]">
+                            <span className="text-xs text-textMuted">No Data</span>
+                          </div>
+                        ) : (
+                          <svg className="w-full h-full transform -rotate-90">
+                            <circle cx="80" cy="80" r="64" stroke="#11161D" strokeWidth="12" fill="none" />
+                            {sessionStatsList.map((s) => {
+                              if(s.trades === 0) return null;
+                              const pct = s.trades / totalSessTrades;
+                              const dash = pct * cSessDonut;
+                              const offset = -(cumPercent * cSessDonut);
+                              cumPercent += pct;
+                              return (
+                                <circle key={`donut-${s.id}`} cx="80" cy="80" r="64" stroke={s.color} strokeWidth="12" fill="none"
+                                  strokeDasharray={`${dash} ${cSessDonut - dash}`}
+                                  strokeDashoffset={offset}
+                                  className="transition-all duration-500" />
+                              )
+                            })}
+                          </svg>
+                        )}
+                        
+                        {totalSessTrades > 0 && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                            <span className="text-[10px] text-textMuted uppercase mb-1">Total Trades</span>
+                            <span className="text-xl font-bold font-mono text-textMain">{totalSessTrades}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="w-full space-y-3">
+                        {sessionStatsList.map(s => {
+                          const pct = totalSessTrades > 0 ? ((s.trades / totalSessTrades) * 100).toFixed(1) : 0;
+                          return (
+                            <div key={`legend-${s.id}`} className="flex justify-between items-center text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: s.trades > 0 ? s.color : '#11161D'}}></span>
+                                <span className={s.trades > 0 ? 'text-textMain' : 'text-textMuted'}>{s.name}</span>
+                              </div>
+                              <span className={`font-mono ${s.trades > 0 ? 'text-textMuted' : 'text-textDark'}`}>
+                                {s.trades} <span className="text-[10px] ml-1">({pct}%)</span>
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col md:flex-row gap-6 divide-y md:divide-y-0 md:divide-x divide-bgBorder shadow-sm">
+                  <div className="flex-1 md:pr-4 pt-2 md:pt-0">
+                    <h4 className="text-[10px] text-textMuted uppercase tracking-widest mb-3">Best Performing Session</h4>
+                    {bestPnlSession ? (
+                      <>
+                        <p className="text-sm text-textMain mb-1">Your best performing session is</p>
+                        <p className="text-base font-bold text-accent">{bestPnlSession.name} <span className="text-textMain font-normal">with</span> <span className={`font-mono ${bestPnlSession.pnl > 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(bestPnlSession.pnl)}</span> <span className="text-textMain font-normal">P&L</span></p>
+                      </>
+                    ) : <p className="text-sm font-mono text-textDark">No Data</p>}
+                  </div>
+                  <div className="flex-1 md:px-6 pt-4 md:pt-0">
+                    <h4 className="text-[10px] text-textMuted uppercase tracking-widest mb-3">Highest Win Rate</h4>
+                    {bestWrSession ? (
+                      <>
+                        <p className="text-sm text-textMain mb-1">Highest win rate in</p>
+                        <p className="text-base font-bold text-accent">{bestWrSession.name} <span className="font-mono text-textMain font-normal">({bestWrSession.winRate.toFixed(0)}%)</span></p>
+                      </>
+                    ) : <p className="text-sm font-mono text-textDark">No Data</p>}
+                  </div>
+                  <div className="flex-1 md:pl-6 pt-4 md:pt-0">
+                    <h4 className="text-[10px] text-textMuted uppercase tracking-widest mb-3">Most Active Session</h4>
+                    {mostActiveSession ? (
+                      <>
+                        <p className="text-sm text-textMain mb-1">Most active session is</p>
+                        <p className="text-base font-bold text-accent">{mostActiveSession.name} <span className="font-mono text-textMain font-normal">({mostActiveSession.trades} trades)</span></p>
+                      </>
+                    ) : <p className="text-sm font-mono text-textDark">No Data</p>}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {showSessionModal && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex justify-center items-center p-4">
+                <div className="bg-bgPanel w-full max-w-md border border-bgBorder rounded-md flex flex-col max-h-[90vh] shadow-2xl">
+                  
+                  <div className="p-4 border-b border-bgBorder flex justify-between items-center">
+                    <h3 className="font-bold text-textMain uppercase tracking-wider">Session Times</h3>
+                    <button type="button" onClick={() => setShowSessionModal(false)} className="text-textMuted hover:text-textMain text-xl leading-none">&times;</button>
+                  </div>
+                  
+                  <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                    {sessError && <div className="bg-loss/10 border border-loss text-loss p-3 rounded text-xs font-bold uppercase tracking-wider text-center">{sessError}</div>}
+                    
+                    <div className="space-y-6">
+                      {['Asia', 'London', 'NewYork'].map(sKey => (
+                        <div key={sKey} className="bg-[#11161D] border border-bgBorder p-4 rounded">
+                          <h4 className="text-xs font-bold text-textMain uppercase tracking-wider mb-4 border-b border-bgBorder pb-2">
+                            {sKey === 'NewYork' ? 'New York' : sKey} Session
+                          </h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <TimePicker label="Start Time" value={tempSess[sKey].start} onChange={(val) => setTempSess({...tempSess, [sKey]: {...tempSess[sKey], start: val}})} isCompact={true} />
+                            <TimePicker label="End Time" value={tempSess[sKey].end} onChange={(val) => setTempSess({...tempSess, [sKey]: {...tempSess[sKey], end: val}})} isCompact={true} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                  </div>
+                  
+                  <div className="p-4 border-t border-bgBorder flex justify-end gap-3 bg-[#080A0D] rounded-b-md">
+                    <button type="button" onClick={() => setShowSessionModal(false)} className="px-4 py-2 text-sm font-bold text-textMuted hover:text-textMain transition-colors">Cancel</button>
+                    <button type="button" onClick={handleSaveSessions} className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold transition-all shadow-[0_0_15px_rgba(0,229,255,0.2)]">Save Session Times</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      );
+    };
+
+    // --- GOALS MODULE ---
+    const GoalsView = ({ trades, startingBalance, goals, saveGoal, deleteGoal }) => {
+      const [showModal, setShowModal] = useState(false);
+      const [editingId, setEditingId] = useState(null);
+
+      const defaultForm = { name: '', description: '', type: 'Custom', deadline: '', target: '', current: '' };
+      const [form, setForm] = useState(defaultForm);
+
+      const stats = useMemo(() => {
+        let net = 0, wins = 0, losses = 0, grossWin = 0, grossLoss = 0, maxDd = 0, peak = 0;
+        let currentMonthPnl = 0;
+        let totalRulesFollowed = 0;
+        let totalRulesPossible = 0;
+        let totalR = 0;
+
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        trades.forEach(t => {
+          net += t.pnl;
+          if (net > peak) peak = net;
+          if (peak - net > maxDd) maxDd = peak - net;
+          
+          if (t.result === 'WIN') { wins++; grossWin += t.pnl; }
+          if (t.result === 'LOSS') { losses++; grossLoss += Math.abs(t.pnl); }
+
+          const tDate = new Date(t.date);
+          if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
+            currentMonthPnl += t.pnl;
+          }
+
+          const ruleCount = t.rulesFollowed !== undefined ? t.rulesFollowed : (t.checklist ? Object.values(t.checklist).filter(Boolean).length : 0);
+          totalRulesFollowed += ruleCount;
+          totalRulesPossible += 5;
+
+          if (t.r !== undefined) totalR += parseFloat(t.r) || 0;
+        });
+
+        const winRate = trades.length ? ((wins / trades.length) * 100) : 0;
+        const pf = grossLoss > 0 ? (grossWin / grossLoss) : (grossWin > 0 ? 99 : 0);
+        const ruleAdherence = totalRulesPossible > 0 ? ((totalRulesFollowed / totalRulesPossible) * 100) : 0;
+
+        return {
+          'Account Balance': startingBalance + net,
+          'Net P&L': net,
+          'Monthly P&L': currentMonthPnl,
+          'Win Rate': winRate,
+          'Profit Factor': pf,
+          'Maximum Drawdown': maxDd, 
+          'Number of Trades': trades.length,
+          'R Multiple': totalR,
+          'Rule Adherence': ruleAdherence
+        };
+      }, [trades, startingBalance]);
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        const newGoal = {
+          ...form,
+          id: editingId || crypto.randomUUID(),
+          target: parseFloat(form.target) || 0,
+          current: form.current === '' ? '' : parseFloat(form.current)
+        };
+        saveGoal(newGoal);
+        setShowModal(false);
+        setForm(defaultForm);
+        setEditingId(null);
+      };
+
+      const handleDelete = (id) => { if(confirm('Delete goal?')) deleteGoal(id); };
+      
+      const handleEdit = (g) => { 
+        setForm({
+          name: g.name || '',
+          description: g.description || g.notes || '',
+          type: g.type || 'Custom',
+          deadline: g.deadline || '',
+          target: g.target || '',
+          current: g.current !== undefined ? g.current : (g.customCurrent || '')
+        });
+        setEditingId(g.id);
+        setShowModal(true);
+      };
+
+      const formatGoalValue = (val, type) => {
+        if (['Account Balance', 'Net P&L', 'Monthly P&L', 'Maximum Drawdown'].includes(type)) return formatMoney(val);
+        if (['Win Rate', 'Rule Adherence'].includes(type)) return `${val.toFixed(1)}%`;
+        if (['Profit Factor', 'R Multiple'].includes(type)) return val.toFixed(2);
+        return val.toString();
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">Goals</h2>
+            </div>
+            <button onClick={() => { setForm(defaultForm); setEditingId(null); setShowModal(true); }} className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors shrink-0">
+              <Icons.Plus /> Add Goal
+            </button>
+          </div>
+
+          {goals.length === 0 && (
+            <div className="text-center p-12 bg-bgPanel border border-bgBorder rounded-md text-textMuted">
+              No goals set yet. Click "Add Goal" to begin tracking your targets.
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {goals.map(g => {
+              
+              let currentNum = (g.current !== '' && g.current !== undefined && !isNaN(g.current)) 
+                  ? parseFloat(g.current) 
+                  : (stats[g.type] || 0);
+
+              const targetNum = parseFloat(g.target) || 0;
+              
+              let progress = targetNum !== 0 ? (currentNum / targetNum) * 100 : 0;
+              let isCompleted = false;
+
+              if (g.type === 'Maximum Drawdown') {
+                progress = targetNum > 0 ? (currentNum / targetNum) * 100 : 0;
+                if (currentNum >= targetNum && targetNum > 0) isCompleted = true; // Breached negative limit
+              } else {
+                if (currentNum >= targetNum && targetNum > 0) isCompleted = true;
+                if (currentNum <= targetNum && targetNum < 0) isCompleted = true; 
+              }
+
+              // Clamp strictly between 0 and 100 for display
+              const displayProgress = Math.min(Math.max(progress, 0), 100).toFixed(0);
+              
+              let barColor = isCompleted ? 'bg-profit' : 'bg-accent';
+              let textColor = isCompleted ? 'text-profit' : 'text-accent';
+
+              if (g.type === 'Maximum Drawdown' && isCompleted) {
+                 barColor = 'bg-loss';
+                 textColor = 'text-loss';
+              }
+
+              let valueDisplay = '';
+              if (g.type === 'Percentage') {
+                  valueDisplay = `${currentNum}% / ${targetNum}%`;
+              } else if (g.type === 'Trades') {
+                  valueDisplay = `${currentNum} trades / ${targetNum} trades`;
+              } else {
+                  valueDisplay = `${formatGoalValue(currentNum, g.type)} / ${formatGoalValue(targetNum, g.type)}`;
+              }
+
+              return (
+                <div key={g.id} className="bg-bgPanel border border-bgBorder rounded-md p-5 flex flex-col relative transition-colors shadow-sm">
+                  
+                  <div className="flex justify-between items-start mb-6">
+                     <h3 className="font-bold text-textMain uppercase tracking-wider text-sm pr-4 truncate">{g.name}</h3>
+                     <span className="px-2 py-0.5 border border-bgBorder rounded text-[9px] text-textMuted uppercase font-bold tracking-widest shrink-0">{g.type}</span>
+                  </div>
+
+                  <div className="mb-4">
+                     <div className="text-2xl font-bold font-mono text-textMain mb-4">
+                        {valueDisplay}
+                     </div>
+
+                     <div className="flex justify-between items-end mb-2">
+                        <span className="text-xs text-textMuted">{displayProgress}% complete</span>
+                        <span className={`text-sm font-bold font-mono ${textColor}`}>{displayProgress}%</span>
+                     </div>
+
+                     <div className="h-2 w-full bg-bgMain rounded-full overflow-hidden border border-[#080A0D]">
+                        <div className={`h-full ${barColor} transition-all duration-300`} style={{width: `${displayProgress}%`}}></div>
+                     </div>
+                  </div>
+
+                  <div className="flex justify-between items-center mt-auto pt-4 border-t border-bgBorder">
+                     <div className="text-xs text-textMuted">
+                        {g.deadline ? `Deadline: ${formatDate(g.deadline)}` : 'No deadline'}
+                     </div>
+                     <div className="flex gap-2 shrink-0">
+                       <button onClick={() => handleEdit(g)} className="px-3 py-1.5 bg-bgMain border border-bgBorder hover:border-textDark rounded text-xs text-textMain transition-colors">Edit</button>
+                       <button onClick={() => handleDelete(g.id)} className="px-3 py-1.5 bg-[#2A1519] border border-loss hover:bg-loss hover:text-white rounded text-xs text-loss transition-colors">Delete</button>
+                     </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Goal Modal */}
+          {showModal && (
+            <div className="fixed inset-0 bg-black/80 z-50 flex justify-center items-center p-4">
+              <div className="bg-bgPanel w-full max-w-md border border-bgBorder rounded-md flex flex-col max-h-[90vh]">
+                
+                <div className="p-4 border-b border-bgBorder flex justify-between items-center">
+                  <h3 className="font-bold text-textMain uppercase tracking-wider">{editingId ? 'Edit Goal' : 'New Goal'}</h3>
+                  <button type="button" onClick={() => setShowModal(false)} className="text-textMuted hover:text-textMain text-xl leading-none">&times;</button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                  <form id="goalForm" onSubmit={handleSave} className="space-y-4">
+                    
+                    <div>
+                      <label className="block text-xs text-textMuted mb-1">Goal Name</label>
+                      <input type="text" required placeholder="e.g. DAILY PIPS GOAL" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-textMuted mb-1">Description (optional)</label>
+                      <textarea rows="3" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none resize-none" value={form.description} onChange={e=>setForm({...form, description:e.target.value})}></textarea>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-textMuted mb-1">Goal Type</label>
+                        <select className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}>
+                          {GOAL_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-textMuted mb-1">Deadline (optional)</label>
+                        <input type="date" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.deadline} onChange={e=>setForm({...form, deadline:e.target.value})}/>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-textMuted mb-1">Target Value</label>
+                        <input type="number" step="any" required className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.target} onChange={e=>setForm({...form, target:e.target.value})}/>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-textMuted mb-1">Current Value</label>
+                        <input type="number" step="any" placeholder="Auto if blank" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none font-mono" value={form.current} onChange={e=>setForm({...form, current:e.target.value})}/>
+                      </div>
+                    </div>
+                    
+                  </form>
+                </div>
+                
+                <div className="p-4 border-t border-bgBorder flex justify-end gap-3 bg-[#11161D] rounded-b-md">
+                  <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-bold text-textMuted hover:text-textMain transition-colors">Cancel</button>
+                  <button type="submit" form="goalForm" className="bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold transition-all">Save Goal</button>
+                </div>
+
+              </div>
+            </div>
+          )}
         </div>
       );
     };
 
     // --- SETTINGS ---
-    const SettingsView = ({ trades, setTrades, startingBalance, setStartingBalance }) => {
+    const SettingsView = ({ trades, setTrades, startingBalance, updateSettings }) => {
       const [localBalance, setLocalBalance] = useState(startingBalance);
 
       const handleSaveBalance = () => {
         const parsed = parseFloat(localBalance);
         if (!isNaN(parsed) && parsed >= 0) {
-          setStartingBalance(parsed);
+          updateSettings({ balance: parsed });
           alert("Starting balance successfully updated!");
         } else {
           alert("Please enter a valid positive number for the starting balance.");
@@ -711,13 +1650,15 @@
         reader.onload = (event) => {
           try {
             const imported = JSON.parse(event.target.result);
-            if(Array.isArray(imported)) { setTrades(imported); alert("Import successful!"); }
+            if(Array.isArray(imported)) { 
+               // Assuming user wants to replace locally, but this is complicated by cloud. 
+               // For now, alert to prevent breaking cloud sync unless explicitly coded for cloud replace.
+               alert("Import feature requires manual cloud database update in this version."); 
+            }
           } catch(err) { alert("Invalid JSON file."); }
         };
         reader.readAsText(file);
       };
-
-      const handleClear = () => { if(confirm("DANGER: Clear ALL trades? This cannot be undone.")) setTrades([]); };
 
       return (
         <div className="max-w-xl space-y-6">
@@ -757,194 +1698,381 @@
               <h3 className="text-textMain text-sm uppercase tracking-wider mb-4">Data Management</h3>
               <div className="flex gap-4">
                 <button onClick={handleExport} className="bg-bgMain border border-bgBorder hover:border-accent text-textMain px-4 py-2 rounded text-sm transition-colors flex-1">Export JSON</button>
-                <label className="bg-bgMain border border-bgBorder hover:border-accent text-textMain px-4 py-2 rounded text-sm transition-colors cursor-pointer flex-1 text-center">
-                  Import JSON
-                  <input type="file" accept=".json" className="hidden" onChange={handleImport} />
+                <label className="bg-bgMain border border-bgBorder hover:border-accent text-textMain px-4 py-2 rounded text-sm transition-colors cursor-pointer flex-1 text-center opacity-50">
+                  Import JSON (Disabled)
+                  <input type="file" accept=".json" className="hidden" disabled />
                 </label>
               </div>
-              <button onClick={handleClear} className="w-full mt-4 bg-[#2A1519] border border-loss text-loss hover:bg-loss hover:text-white px-4 py-2 rounded text-sm font-bold transition-colors">CLEAR ALL LOCAL DATA</button>
             </div>
           </div>
         </div>
       );
     };
 
-    // --- GOALS ---
-    const GOAL_TYPES = ['Trades', 'Days', 'Percentage', 'USD', 'R', 'Custom'];
-    const GoalsView = ({ goals, setGoals }) => {
-      const emptyForm = { name: '', description: '', type: 'Trades', targetValue: '', currentValue: '', deadline: '' };
-      const [showModal, setShowModal] = useState(false);
-      const [editingId, setEditingId] = useState(null);
-      const [form, setForm] = useState(emptyForm);
-
-      const openNewGoal = () => {
-        setForm(emptyForm);
-        setEditingId(null);
-        setShowModal(true);
+    // ==========================================
+    // 5. SUPABASE AUTH & SETUP VIEWS
+    // ==========================================
+    const SetupScreen = ({ onComplete }) => {
+      const [url, setUrl] = useState('');
+      const [key, setKey] = useState('');
+      
+      const handleSave = () => {
+         if(!url || !key) return alert('Both fields required');
+         localStorage.setItem('mishav_supabase_url', url);
+         localStorage.setItem('mishav_supabase_key', key);
+         onComplete();
       };
 
-      const handleSave = (e) => {
-        e.preventDefault();
-        const targetValue = parseFloat(form.targetValue);
-        const currentValue = parseFloat(form.currentValue);
-        if (!Number.isFinite(targetValue) || targetValue <= 0 || !Number.isFinite(currentValue) || currentValue < 0) return;
+      const sql = `-- Run this in your Supabase SQL Editor:
+create table public.trades (
+  id text primary key,
+  user_id uuid references auth.users not null,
+  data jsonb not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
 
-        const goal = {
-          id: editingId || Date.now().toString(),
-          name: form.name.trim(),
-          description: form.description.trim(),
-          type: form.type,
-          targetValue,
-          currentValue,
-          deadline: form.deadline
-        };
-        setGoals(editingId ? goals.map(item => item.id === editingId ? goal : item) : [...goals, goal]);
-        setShowModal(false);
-        setEditingId(null);
-        setForm(emptyForm);
-      };
+create table public.goals (
+  id text primary key,
+  user_id uuid references auth.users not null,
+  data jsonb not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
 
-      const handleEdit = (goal) => {
-        setForm({ ...goal, targetValue: String(goal.targetValue), currentValue: String(goal.currentValue) });
-        setEditingId(goal.id);
-        setShowModal(true);
-      };
+create table public.settings (
+  user_id uuid references auth.users primary key,
+  balance numeric default 50000,
+  dashboard_target numeric default 8,
+  dashboard_target_type text default 'Percentage',
+  session_settings jsonb default '{"configured": false, "sessions": {"Asia": {"end": {"a": "AM", "h": "11", "m": "30"}, "start": {"a": "AM", "h": "7", "m": "00"}}, "London": {"end": {"a": "PM", "h": "4", "m": "30"}, "start": {"a": "PM", "h": "1", "m": "00"}}, "NewYork": {"end": {"a": "PM", "h": "8", "m": "30"}, "start": {"a": "PM", "h": "5", "m": "30"}}}}'::jsonb
+);
 
-      const handleDelete = (id) => {
-        if (confirm('Delete this goal?')) setGoals(goals.filter(goal => goal.id !== id));
-      };
+alter table public.trades enable row level security;
+alter table public.goals enable row level security;
+alter table public.settings enable row level security;
 
-      const formatGoalValue = (value, type) => {
-        const display = Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
-        if (type === 'Trades') return `${display} trades`;
-        if (type === 'Days') return `${display} days`;
-        if (type === 'Percentage') return `${display}%`;
-        if (type === 'USD') return `$${display}`;
-        if (type === 'R') return `${display}R`;
-        return display;
-      };
+create policy "Enable full access for users based on user_id" on public.trades for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Enable full access for users based on user_id" on public.goals for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Enable full access for users based on user_id" on public.settings for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+alter publication supabase_realtime add table trades;
+alter publication supabase_realtime add table goals;
+alter publication supabase_realtime add table settings;`;
 
       return (
-        <div className="space-y-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold uppercase tracking-wider text-textMain">Goals</h2>
-            <button type="button" onClick={openNewGoal} className="min-h-11 bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 transition-colors">
-              <Icons.Plus /> Add Goal
-            </button>
-          </div>
-
-          {goals.length === 0 ? (
-            <div className="bg-bgPanel border border-bgBorder rounded-md p-6 sm:p-8 text-center">
-              <p className="text-textMain font-medium">No goals yet</p>
-              <p className="text-textMuted text-sm mt-2">Create your first goal and start tracking your progress.</p>
-              <button type="button" onClick={openNewGoal} className="min-h-11 mt-5 bg-accent hover:bg-[#00cce6] text-[#080A0D] px-4 py-2 rounded text-sm font-bold inline-flex items-center gap-2 transition-colors">
-                <Icons.Plus /> Add Goal
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {goals.map(goal => {
-                const percentage = Math.max(0, Math.min(100, (goal.currentValue / goal.targetValue) * 100));
-                const percentageLabel = Number.isInteger(percentage) ? percentage : percentage.toFixed(1);
-                return (
-                  <div key={goal.id} className="bg-bgPanel border border-bgBorder rounded-md p-5 space-y-4 min-w-0">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <h3 className="text-textMain font-semibold break-words">{goal.name}</h3>
-                        {goal.description && <p className="text-textMuted text-sm mt-1 break-words">{goal.description}</p>}
-                      </div>
-                      <span className="shrink-0 text-[10px] uppercase font-bold tracking-wider text-accent border border-accent/40 rounded px-2 py-1">{goal.type}</span>
-                    </div>
-                    <div>
-                      <div className="flex items-baseline justify-between gap-3 text-sm">
-                        <span className="text-textMain font-mono min-w-0 break-words">{formatGoalValue(goal.currentValue, goal.type)} / {formatGoalValue(goal.targetValue, goal.type)}</span>
-                        <span className="text-profit font-mono font-bold shrink-0">{percentageLabel}%</span>
-                      </div>
-                      <p className="text-textDark text-xs mt-1">{percentageLabel}% complete</p>
-                      <div className="h-2 mt-3 bg-bgMain border border-bgBorder rounded overflow-hidden">
-                        <div className="h-full bg-profit" style={{ width: `${percentage}%` }} />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-3 border-t border-bgBorder pt-4 sm:flex-row sm:items-center sm:justify-between">
-                      <span className="text-xs text-textDark">{goal.deadline ? `Deadline: ${new Date(`${goal.deadline}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'No deadline'}</span>
-                      <div className="grid grid-cols-2 gap-2 sm:flex">
-                        <button type="button" onClick={() => handleEdit(goal)} className="min-h-11 px-4 border border-bgBorder hover:border-accent text-textMuted hover:text-accent rounded text-sm transition-colors">Edit</button>
-                        <button type="button" onClick={() => handleDelete(goal.id)} className="min-h-11 px-4 border border-loss/60 hover:bg-loss hover:text-white text-loss rounded text-sm transition-colors">Delete</button>
-                      </div>
-                    </div>
+         <div className="flex h-screen items-center justify-center bg-bgMain text-textMain p-4 overflow-y-auto">
+            <div className="bg-bgPanel border border-bgBorder rounded-md p-8 max-w-3xl w-full shadow-2xl my-auto">
+               <h1 className="text-xl font-bold uppercase tracking-wider mb-2 text-accent">Database Setup Required</h1>
+               <p className="text-sm text-textMuted mb-6">Enter your Supabase credentials to enable cloud synchronization. Your API keys are stored locally in your browser.</p>
+               
+               <div className="space-y-4 mb-8">
+                  <div>
+                    <label className="block text-xs text-textMuted mb-1">Supabase Project URL</label>
+                    <input type="text" placeholder="https://your-project.supabase.co" className="w-full bg-bgMain border border-bgBorder rounded p-3 text-sm text-textMain focus:border-accent outline-none font-mono" value={url} onChange={e=>setUrl(e.target.value)}/>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div>
+                    <label className="block text-xs text-textMuted mb-1">Supabase Anon Key (Public)</label>
+                    <input type="password" placeholder="ey..." className="w-full bg-bgMain border border-bgBorder rounded p-3 text-sm text-textMain focus:border-accent outline-none font-mono" value={key} onChange={e=>setKey(e.target.value)}/>
+                  </div>
+               </div>
 
-          {showModal && (
-            <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-              <div className="bg-bgPanel w-full max-w-lg border border-bgBorder rounded-md flex flex-col max-h-[90vh]">
-                <div className="p-4 border-b border-bgBorder flex justify-between items-center">
-                  <h3 className="font-bold text-textMain uppercase tracking-wider">{editingId ? 'Edit Goal' : 'New Goal'}</h3>
-                  <button type="button" aria-label="Close goal form" onClick={() => setShowModal(false)} className="min-h-11 min-w-11 text-textMuted hover:text-textMain">×</button>
-                </div>
-                <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                  <form id="goalForm" onSubmit={handleSave} className="space-y-4">
-                    <div><label className="block text-xs text-textMuted mb-1">Goal Name</label><input type="text" required className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-                    <div><label className="block text-xs text-textMuted mb-1">Description <span className="text-textDark">(optional)</span></label><textarea rows="3" className="w-full bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none resize-none" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}></textarea></div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div><label className="block text-xs text-textMuted mb-1">Goal Type</label><select className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>{GOAL_TYPES.map(type => <option key={type}>{type}</option>)}</select></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Deadline <span className="text-textDark">(optional)</span></label><input type="date" className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain focus:border-accent outline-none" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} /></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Target Value</label><input type="number" min="0.01" step="any" required className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none" value={form.targetValue} onChange={e => setForm({ ...form, targetValue: e.target.value })} /></div>
-                      <div><label className="block text-xs text-textMuted mb-1">Current Value</label><input type="number" min="0" step="any" required className="w-full min-h-11 bg-bgMain border border-bgBorder rounded p-2 text-sm text-textMain font-mono focus:border-accent outline-none" value={form.currentValue} onChange={e => setForm({ ...form, currentValue: e.target.value })} /></div>
-                    </div>
-                  </form>
-                </div>
-                <div className="p-4 border-t border-bgBorder flex flex-col-reverse gap-2 sm:flex-row sm:justify-end bg-[#11161D] rounded-b-md">
-                  <button type="button" onClick={() => setShowModal(false)} className="min-h-11 px-4 text-sm text-textMuted hover:text-textMain">Cancel</button>
-                  <button type="submit" form="goalForm" className="min-h-11 bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-2 rounded text-sm font-bold">{editingId ? 'Save Goal' : 'Create Goal'}</button>
-                </div>
-              </div>
+               <button onClick={handleSave} className="w-full bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-3 rounded text-sm font-bold transition-all mb-8 shadow-[0_0_15px_rgba(0,229,255,0.2)]">Connect to Supabase</button>
+               
+               <div className="border-t border-bgBorder pt-6">
+                  <h3 className="text-sm font-bold text-textMain mb-2 uppercase">Required SQL Schema</h3>
+                  <p className="text-xs text-textMuted mb-3">You must run this SQL in your Supabase SQL Editor before connecting.</p>
+                  <pre className="bg-[#080A0D] border border-bgBorder p-4 rounded text-[10px] text-textDark overflow-x-auto font-mono">
+                     {sql}
+                  </pre>
+               </div>
             </div>
-          )}
-        </div>
+         </div>
       );
-    };
+    }
+
+    const AuthScreen = ({ supabase }) => {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const [isSignUp, setIsSignUp] = useState(false);
+
+      const handleAuth = async (e) => {
+         e.preventDefault();
+         setLoading(true); setError(null);
+         try {
+            if (isSignUp) {
+               const { error } = await supabase.auth.signUp({ email, password });
+               if (error) throw error;
+               alert('Check your email for the confirmation link.');
+            } else {
+               const { error } = await supabase.auth.signInWithPassword({ email, password });
+               if (error) throw error;
+            }
+         } catch(err) {
+            setError(err.message);
+         } finally {
+            setLoading(false);
+         }
+      }
+
+      return (
+         <div className="flex h-screen items-center justify-center bg-bgMain text-textMain p-4">
+            <div className="bg-bgPanel border border-bgBorder rounded-md p-8 max-w-sm w-full shadow-2xl">
+               <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-center mb-1">MISHAV</h1>
+               <p className="text-[10px] uppercase font-bold tracking-widest text-textDark text-center mb-8">Cloud Trading Journal</p>
+               
+               {error && <div className="bg-loss/10 border border-loss text-loss p-3 rounded text-xs font-bold uppercase tracking-wider text-center mb-6">{error}</div>}
+               
+               <form onSubmit={handleAuth} className="space-y-4">
+                  <div>
+                    <label className="block text-xs text-textMuted mb-1">Email Address</label>
+                    <input type="email" required className="w-full bg-bgMain border border-bgBorder rounded p-3 text-sm text-textMain focus:border-accent outline-none" value={email} onChange={e=>setEmail(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-textMuted mb-1">Password</label>
+                    <input type="password" required className="w-full bg-bgMain border border-bgBorder rounded p-3 text-sm text-textMain focus:border-accent outline-none" value={password} onChange={e=>setPassword(e.target.value)}/>
+                  </div>
+                  
+                  <button disabled={loading} type="submit" className="w-full bg-accent hover:bg-[#00cce6] text-[#080A0D] px-6 py-3 rounded text-sm font-bold transition-all shadow-[0_0_15px_rgba(0,229,255,0.2)] mt-4 disabled:opacity-50">
+                     {loading ? 'Authenticating...' : (isSignUp ? 'Create Account' : 'Secure Login')}
+                  </button>
+               </form>
+               
+               <div className="mt-6 text-center">
+                  <button onClick={() => setIsSignUp(!isSignUp)} className="text-xs text-textMuted hover:text-textMain transition-colors">
+                     {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+                  </button>
+               </div>
+            </div>
+         </div>
+      );
+    }
+
+    const MigrationScreen = ({ onImport, onSkip }) => {
+       return (
+         <div className="fixed inset-0 bg-black/90 z-50 flex justify-center items-center p-4">
+            <div className="bg-bgPanel border border-accent rounded-md p-8 max-w-lg w-full shadow-[0_0_30px_rgba(0,229,255,0.1)] text-center">
+               <h2 className="text-xl font-bold uppercase tracking-wider text-textMain mb-4">Local Data Found</h2>
+               <p className="text-sm text-textMuted mb-8">We found existing trading records saved locally on this browser. Would you like to securely import them into your new cloud account?</p>
+               <div className="flex gap-4 justify-center">
+                  <button onClick={onSkip} className="px-6 py-3 bg-bgMain border border-bgBorder hover:border-textDark rounded text-sm font-bold text-textMuted transition-colors w-full">Skip</button>
+                  <button onClick={onImport} className="px-6 py-3 bg-accent hover:bg-[#00cce6] text-[#080A0D] rounded text-sm font-bold transition-all shadow-[0_0_15px_rgba(0,229,255,0.2)] w-full">Import Trades</button>
+               </div>
+               <p className="text-[10px] text-loss mt-4">Warning: Clicking Skip will start you with an empty cloud journal.</p>
+            </div>
+         </div>
+       );
+    }
 
     // ==========================================
-    // 5. MAIN APP CONTAINER
+    // 6. MAIN APP CONTAINER
     // ==========================================
-    const App = () => {
+    const MainJournal = ({ supabase, user }) => {
       const [view, setView] = useState('dashboard');
-      const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+      const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+      const [syncStatus, setSyncStatus] = useState('Syncing...');
+      const [showMigration, setShowMigration] = useState(false);
+      const [isLoaded, setIsLoaded] = useState(false);
       
-      const [trades, setTrades] = useState(() => {
-        const saved = localStorage.getItem('mishav_trades');
-        return saved ? JSON.parse(saved) : SAMPLE_TRADES;
-      });
+      const [trades, setTrades] = useState([]);
+      const [goals, setGoals] = useState([]);
+      const [startingBalance, setStartingBalance] = useState(50000);
+      const [dashboardTarget, setDashboardTarget] = useState(8);
+      const [dashboardTargetType, setDashboardTargetType] = useState('Percentage');
+      const [sessionSettings, setSessionSettings] = useState({ configured: false, sessions: null });
 
-      const [startingBalance, setStartingBalance] = useState(() => {
-        const savedBalance = localStorage.getItem('mishav_balance');
-        return savedBalance ? parseFloat(savedBalance) : 50000;
-      });
-
-      const [goals, setGoals] = useState(() => {
-        const savedGoals = localStorage.getItem('mishav_goals');
-        try {
-          return savedGoals ? JSON.parse(savedGoals) : [];
-        } catch (err) {
-          return [];
-        }
-      });
-
+      // Connection Status
       useEffect(() => {
-        localStorage.setItem('mishav_trades', JSON.stringify(trades));
-      }, [trades]);
+         const handleOnline = () => setSyncStatus('Synced');
+         const handleOffline = () => setSyncStatus('Offline');
+         window.addEventListener('online', handleOnline);
+         window.addEventListener('offline', handleOffline);
+         return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+         };
+      }, []);
 
+      // Initial DB Fetch & Realtime Subscription
       useEffect(() => {
-        localStorage.setItem('mishav_balance', startingBalance.toString());
-      }, [startingBalance]);
+         let isMounted = true;
 
+         const loadData = async () => {
+            try {
+               setSyncStatus('Syncing...');
+               const [resTrades, resGoals, resSettings] = await Promise.all([
+                  supabase.from('trades').select('*'),
+                  supabase.from('goals').select('*'),
+                  supabase.from('settings').select('*').eq('user_id', user.id).single()
+               ]);
+
+               if(!isMounted) return;
+
+               const cloudTrades = resTrades.data ? resTrades.data.map(t => t.data) : [];
+               const cloudGoals = resGoals.data ? resGoals.data.map(g => g.data) : [];
+
+               setTrades(cloudTrades);
+               setGoals(cloudGoals);
+
+               if (resSettings.data) {
+                  setStartingBalance(resSettings.data.balance);
+                  setDashboardTarget(resSettings.data.dashboard_target);
+                  setDashboardTargetType(resSettings.data.dashboard_target_type);
+                  setSessionSettings(resSettings.data.session_settings);
+               }
+
+               setSyncStatus('Synced');
+               setIsLoaded(true);
+
+               // Migration Check
+               const localTradesStr = localStorage.getItem('mishav_trades');
+               const localTrades = localTradesStr ? JSON.parse(localTradesStr) : [];
+               if (localTrades.length > 0 && cloudTrades.length === 0) {
+                  setShowMigration(true);
+               }
+
+            } catch(e) {
+               console.error("Load Error:", e);
+               setSyncStatus('Offline');
+               setIsLoaded(true); // Load empty/offline
+            }
+         };
+
+         loadData();
+
+         // Setup Realtime
+         const channel = supabase.channel('schema-db-changes')
+           .on('postgres_changes', { event: '*', schema: 'public', table: 'trades' }, payload => {
+               if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                  setTrades(prev => {
+                     const exists = prev.find(t => t.id === payload.new.id);
+                     if(exists) return prev.map(t => t.id === payload.new.id ? payload.new.data : t);
+                     return [...prev, payload.new.data];
+                  });
+               } else if (payload.eventType === 'DELETE') {
+                  setTrades(prev => prev.filter(t => t.id !== payload.old.id));
+               }
+           })
+           .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, payload => {
+               if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                  setGoals(prev => {
+                     const exists = prev.find(g => g.id === payload.new.id);
+                     if(exists) return prev.map(g => g.id === payload.new.id ? payload.new.data : g);
+                     return [...prev, payload.new.data];
+                  });
+               } else if (payload.eventType === 'DELETE') {
+                  setGoals(prev => prev.filter(g => g.id !== payload.old.id));
+               }
+           })
+           .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, payload => {
+               if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                  if (payload.new.user_id === user.id) {
+                     setStartingBalance(payload.new.balance);
+                     setDashboardTarget(payload.new.dashboard_target);
+                     setDashboardTargetType(payload.new.dashboard_target_type);
+                     setSessionSettings(payload.new.session_settings);
+                  }
+               }
+           })
+           .subscribe();
+
+         return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+         }
+      }, [user.id, supabase]);
+
+      const handleMigrationImport = async () => {
+         setSyncStatus('Syncing...');
+         setShowMigration(false);
+         try {
+            const localTradesStr = localStorage.getItem('mishav_trades');
+            const localGoalsStr = localStorage.getItem('mishav_goals');
+            const localTrades = localTradesStr ? JSON.parse(localTradesStr) : [];
+            const localGoals = localGoalsStr ? JSON.parse(localGoalsStr) : [];
+
+            const tradeInserts = localTrades.map(t => ({ id: t.id, user_id: user.id, data: t }));
+            const goalInserts = localGoals.map(g => ({ id: g.id, user_id: user.id, data: g }));
+
+            if (tradeInserts.length > 0) await supabase.from('trades').upsert(tradeInserts);
+            if (goalInserts.length > 0) await supabase.from('goals').upsert(goalInserts);
+            
+            // Mark migrated
+            localStorage.removeItem('mishav_trades'); 
+            setSyncStatus('Synced');
+         } catch(e) {
+            console.error("Migration Error:", e);
+            setSyncStatus('Offline');
+         }
+      };
+
+      const handleMigrationSkip = () => {
+         localStorage.removeItem('mishav_trades'); 
+         setShowMigration(false);
+      };
+
+      // CRUD Wrappers
+      const saveTrade = async (trade) => {
+         // Optimistic
+         setTrades(prev => {
+            if(prev.find(t => t.id === trade.id)) return prev.map(t => t.id === trade.id ? trade : t);
+            return [...prev, trade];
+         });
+         setSyncStatus('Syncing...');
+         const { error } = await supabase.from('trades').upsert({ id: trade.id, user_id: user.id, data: trade });
+         if (error) setSyncStatus('Offline'); else setSyncStatus('Synced');
+      };
+
+      const deleteTrade = async (id) => {
+         setTrades(prev => prev.filter(t => t.id !== id));
+         setSyncStatus('Syncing...');
+         const { error } = await supabase.from('trades').delete().eq('id', id);
+         if (error) setSyncStatus('Offline'); else setSyncStatus('Synced');
+      };
+
+      const saveGoal = async (goal) => {
+         setGoals(prev => {
+            if(prev.find(g => g.id === goal.id)) return prev.map(g => g.id === goal.id ? goal : g);
+            return [...prev, goal];
+         });
+         setSyncStatus('Syncing...');
+         const { error } = await supabase.from('goals').upsert({ id: goal.id, user_id: user.id, data: goal });
+         if (error) setSyncStatus('Offline'); else setSyncStatus('Synced');
+      };
+
+      const deleteGoal = async (id) => {
+         setGoals(prev => prev.filter(g => g.id !== id));
+         setSyncStatus('Syncing...');
+         const { error } = await supabase.from('goals').delete().eq('id', id);
+         if (error) setSyncStatus('Offline'); else setSyncStatus('Synced');
+      };
+
+      const updateSettings = async (updates) => {
+         // Optimistic
+         if (updates.balance !== undefined) setStartingBalance(updates.balance);
+         if (updates.dashboard_target !== undefined) setDashboardTarget(updates.dashboard_target);
+         if (updates.dashboard_target_type !== undefined) setDashboardTargetType(updates.dashboard_target_type);
+         if (updates.session_settings !== undefined) setSessionSettings(updates.session_settings);
+
+         setSyncStatus('Syncing...');
+         const { error } = await supabase.from('settings').upsert({ 
+            user_id: user.id, 
+            balance: updates.balance !== undefined ? updates.balance : startingBalance,
+            dashboard_target: updates.dashboard_target !== undefined ? updates.dashboard_target : dashboardTarget,
+            dashboard_target_type: updates.dashboard_target_type !== undefined ? updates.dashboard_target_type : dashboardTargetType,
+            session_settings: updates.session_settings !== undefined ? updates.session_settings : sessionSettings
+         });
+         if (error) setSyncStatus('Offline'); else setSyncStatus('Synced');
+      };
+
+      // Debounced save for dashboard targets so we don't spam DB on typing
       useEffect(() => {
-        localStorage.setItem('mishav_goals', JSON.stringify(goals));
-      }, [goals]);
+         if (!isLoaded) return;
+         const timer = setTimeout(() => {
+            updateSettings({ dashboard_target: dashboardTarget, dashboard_target_type: dashboardTargetType });
+         }, 1500);
+         return () => clearTimeout(timer);
+      }, [dashboardTarget, dashboardTargetType]);
 
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: <Icons.Dashboard /> },
@@ -957,39 +2085,42 @@
       ];
 
       const renderView = () => {
+        if (!isLoaded) return <div className="flex items-center justify-center h-full text-textMuted font-mono">LOADING CLOUD DATA...</div>;
+
         switch(view) {
-          case 'dashboard': return <DashboardView trades={trades} startingBalance={startingBalance} />;
+          case 'dashboard': return <DashboardView trades={trades} startingBalance={startingBalance} dashboardTarget={dashboardTarget} setDashboardTarget={setDashboardTarget} dashboardTargetType={dashboardTargetType} setDashboardTargetType={setDashboardTargetType} />;
           case 'journal': return <JournalView trades={trades} />;
-          case 'trades': return <TradesView trades={trades} setTrades={setTrades} />;
+          case 'trades': return <TradesView trades={trades} saveTrade={saveTrade} deleteTrade={deleteTrade} sessionSettings={sessionSettings} />;
           case 'calendar': return <CalendarView trades={trades} />;
-          case 'analytics': return <AnalyticsView trades={trades} />;
-          case 'settings': return <SettingsView trades={trades} setTrades={setTrades} startingBalance={startingBalance} setStartingBalance={setStartingBalance} />;
-          case 'goals': return <GoalsView goals={goals} setGoals={setGoals} />;
-          default: return <DashboardView trades={trades} startingBalance={startingBalance} />;
+          case 'analytics': return <AnalyticsView trades={trades} sessionSettings={sessionSettings} updateSettings={updateSettings} />;
+          case 'settings': return <SettingsView trades={trades} startingBalance={startingBalance} updateSettings={updateSettings} />;
+          case 'goals': return <GoalsView trades={trades} startingBalance={startingBalance} goals={goals} saveGoal={saveGoal} deleteGoal={deleteGoal} />;
+          default: return <DashboardView trades={trades} startingBalance={startingBalance} dashboardTarget={dashboardTarget} setDashboardTarget={setDashboardTarget} dashboardTargetType={dashboardTargetType} setDashboardTargetType={setDashboardTargetType} />;
         }
       };
 
+      const handleNavClick = (id) => { setView(id); setMobileMenuOpen(false); };
+      const handleLogout = async () => { await supabase.auth.signOut(); };
+
       const totalBalance = startingBalance + trades.reduce((s,t) => s + t.pnl, 0);
-      const handleNavigation = (nextView) => {
-        setView(nextView);
-        setIsMobileNavOpen(false);
-      };
+
+      // Edge Score calculation
+      let wins = 0, losses = 0, grossWin = 0, grossLoss = 0;
+      trades.forEach(t => {
+        if (t.result === 'WIN') { wins++; grossWin += t.pnl; }
+        if (t.result === 'LOSS') { losses++; grossLoss += Math.abs(t.pnl); }
+      });
+      const winRate = trades.length ? (wins / (wins + losses)) * 100 : 0;
+      const pf = grossLoss > 0 ? (grossWin / grossLoss) : grossWin > 0 ? 99 : 0;
+      const isPfGood = pf > 1;
+      const globalEdgeScore = trades.length > 0 ? (winRate * 0.8 + (isPfGood ? 20 : 0)).toFixed(0) : 0;
 
       return (
-        <div className="flex h-screen w-full overflow-hidden bg-bgMain text-textMain selection:bg-accent/30 selection:text-white font-sans">
-          {isMobileNavOpen && (
-            <button
-              type="button"
-              aria-label="Close navigation menu"
-              onClick={() => setIsMobileNavOpen(false)}
-              className="fixed inset-x-0 bottom-0 top-16 z-20 bg-black/60 md:hidden"
-            />
-          )}
+        <div className="flex h-screen w-full overflow-hidden bg-bgMain text-textMain selection:bg-accent/30 selection:text-white font-sans relative">
+          {showMigration && <MigrationScreen onImport={handleMigrationImport} onSkip={handleMigrationSkip} />}
 
-          <aside
-            id="mobile-navigation"
-            className={`fixed inset-y-0 left-0 z-30 flex w-64 shrink-0 flex-col justify-between border-r border-bgBorder bg-bgPanel shadow-xl transform transition-transform duration-200 ease-out ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:z-auto md:translate-x-0 md:shadow-none md:transition-none`}
-          >
+          {/* Sidebar (Desktop) */}
+          <aside className="w-64 bg-bgPanel border-r border-bgBorder flex-col justify-between hidden md:flex shrink-0 z-20">
             <div>
               <div className="p-6">
                 <h1 className="text-textMain font-black text-xl uppercase tracking-[0.2em]">MISHAV</h1>
@@ -997,7 +2128,7 @@
               </div>
               <nav className="mt-2 flex flex-col gap-1 px-3">
                 {navItems.map(item => (
-                  <button type="button" key={item.id} onClick={() => handleNavigation(item.id)} className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-md text-sm font-medium transition-all ${view === item.id ? 'bg-bgBorder text-accent' : 'text-textMuted hover:bg-bgMain hover:text-textMain'}`}>
+                  <button key={item.id} onClick={() => handleNavClick(item.id)} className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-md text-sm font-medium transition-all ${view === item.id ? 'bg-bgBorder text-accent' : 'text-textMuted hover:bg-bgMain hover:text-textMain'}`}>
                     {item.icon} {item.label}
                   </button>
                 ))}
@@ -1006,35 +2137,62 @@
             <div className="p-4 border-t border-bgBorder space-y-2">
               <div className="px-4 py-2 bg-bgMain border border-bgBorder rounded text-center">
                 <span className="text-[10px] text-textMuted uppercase block">Edge Score</span>
-                <span className="text-accent font-bold font-mono">76.6 / 100</span>
+                <span className="text-accent font-bold font-mono">{globalEdgeScore} / 100</span>
               </div>
             </div>
           </aside>
 
+          {/* Sidebar (Mobile Overlay) */}
+          {mobileMenuOpen && (
+             <div className="fixed inset-0 bg-black/80 z-40 md:hidden flex" onClick={() => setMobileMenuOpen(false)}>
+                <aside className="w-64 bg-bgPanel border-r border-bgBorder flex flex-col justify-between shrink-0 h-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                  <div>
+                    <div className="p-6 flex justify-between items-center">
+                      <div>
+                        <h1 className="text-textMain font-black text-xl uppercase tracking-[0.2em]">MISHAV</h1>
+                        <p className="text-textDark text-[10px] uppercase font-bold tracking-widest mt-1">Trading Journal</p>
+                      </div>
+                      <button onClick={() => setMobileMenuOpen(false)} className="text-textMuted hover:text-textMain p-2">✕</button>
+                    </div>
+                    <nav className="mt-2 flex flex-col gap-1 px-3">
+                      {navItems.map(item => (
+                        <button key={item.id} onClick={() => handleNavClick(item.id)} className={`flex items-center gap-3 w-full px-4 py-3 rounded-md text-sm font-medium transition-all ${view === item.id ? 'bg-bgBorder text-accent' : 'text-textMuted hover:bg-bgMain hover:text-textMain'}`}>
+                          {item.icon} {item.label}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+                </aside>
+             </div>
+          )}
+
           <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
-            <header className="h-16 flex items-center justify-between px-6 bg-bgMain/80 backdrop-blur-sm border-b border-bgBorder sticky top-0 z-10 shrink-0">
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  aria-label={isMobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
-                  aria-expanded={isMobileNavOpen}
-                  aria-controls="mobile-navigation"
-                  onClick={() => setIsMobileNavOpen(open => !open)}
-                  className="md:hidden relative z-30 -m-2 min-h-11 min-w-11 p-2 text-textMuted hover:text-textMain cursor-pointer pointer-events-auto touch-manipulation"
-                ><Icons.List /></button>
+            <header className="h-16 flex items-center justify-between px-4 md:px-6 bg-bgMain/80 backdrop-blur-sm border-b border-bgBorder sticky top-0 z-10 shrink-0">
+              <div className="flex items-center gap-3 md:gap-4">
+                <button className="md:hidden text-textMuted hover:text-textMain p-2 -ml-2" onClick={() => setMobileMenuOpen(true)}>
+                  <Icons.List />
+                </button>
                 <div>
                   <h2 className="text-textMain font-semibold uppercase tracking-wider text-sm">{navItems.find(n=>n.id===view)?.label || 'Dashboard'}</h2>
                 </div>
               </div>
-              <div className="text-right flex items-center gap-6">
+              <div className="text-right flex items-center gap-4">
+                <div className="hidden sm:flex flex-col items-end pr-4 border-r border-bgBorder">
+                   <div className="text-[10px] text-textMuted flex items-center gap-1">
+                     <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'Synced' ? 'bg-profit' : syncStatus === 'Syncing...' ? 'bg-accent' : 'bg-loss'}`}></span>
+                     {syncStatus}
+                   </div>
+                   <div className="text-[10px] font-mono mt-0.5 text-textMain">{user.email}</div>
+                   <button onClick={handleLogout} className="text-[9px] uppercase text-loss hover:underline mt-0.5">Logout</button>
+                </div>
                 <div>
-                  <p className="text-textDark text-[10px] uppercase font-bold tracking-widest">Account Balance</p>
-                  <p className="text-textMain font-mono font-bold">{formatMoney(totalBalance)}</p>
+                  <p className="text-textDark text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Account Balance</p>
+                  <p className="text-textMain font-mono font-bold text-sm md:text-base">{formatMoney(totalBalance)}</p>
                 </div>
               </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-6 scroll-smooth">
+            <main className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
               <div className="max-w-7xl mx-auto h-full">
                 {renderView()}
               </div>
@@ -1044,8 +2202,55 @@
       );
     };
 
+    // ==========================================
+    // 7. APP BOOTSTRAPPER (AUTH / SETUP)
+    // ==========================================
+    const Bootstrapper = () => {
+      const [supabaseConfig, setSupabaseConfig] = useState(() => {
+         const url = localStorage.getItem('mishav_supabase_url');
+         const key = localStorage.getItem('mishav_supabase_key');
+         return (url && key) ? { url, key } : null;
+      });
+
+      const [supabaseClient, setSupabaseClient] = useState(null);
+      const [user, setUser] = useState(null);
+      const [loadingAuth, setLoadingAuth] = useState(true);
+
+      useEffect(() => {
+         if (supabaseConfig) {
+            const client = window.supabase.createClient(supabaseConfig.url, supabaseConfig.key);
+            setSupabaseClient(client);
+            
+            client.auth.getSession().then(({ data: { session } }) => {
+               setUser(session?.user || null);
+               setLoadingAuth(false);
+            });
+
+            const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+               setUser(session?.user || null);
+            });
+            return () => subscription.unsubscribe();
+         }
+      }, [supabaseConfig]);
+
+      if (!supabaseConfig) {
+         return <SetupScreen onComplete={() => {
+            setSupabaseConfig({
+               url: localStorage.getItem('mishav_supabase_url'),
+               key: localStorage.getItem('mishav_supabase_key')
+            });
+         }} />;
+      }
+
+      if (loadingAuth) return <div className="flex h-screen items-center justify-center bg-bgMain text-textMuted font-mono text-sm">AUTHENTICATING...</div>;
+      
+      if (!user) return <AuthScreen supabase={supabaseClient} />;
+
+      return <MainJournal supabase={supabaseClient} user={user} />;
+    };
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    root.render(<Bootstrapper />);
   </script>
 </body>
 </html>
